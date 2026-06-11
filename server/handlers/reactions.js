@@ -29,6 +29,33 @@ function register(io, socket) {
     });
 
     // ==========================================
+    // EDITAR MENSAJES (solo el autor, solo texto)
+    // ==========================================
+    socket.on('edit message', (payload) => {
+        if (!socket.userId) return;
+        const scope = payload?.scope || 'lobby';
+        const msgId = payload?.msgId;
+        const text = typeof payload?.text === 'string' ? payload.text.trim().substring(0, 2000) : '';
+        if (!msgId || !text) return;
+        if (scope !== 'lobby') {
+            const parts = scope.split('|');
+            if (!parts.includes(socket.userId)) return;
+        }
+        const message = findMessage(scope, msgId);
+        if (!message || message.deleted) return;
+        if (message.userId !== socket.userId) {
+            socket.emit('error toast', { message: 'Solo puedes editar tus propios mensajes.' });
+            return;
+        }
+        const hasMedia = (message.imageUrls && message.imageUrls.length > 0) || message.audioUrl;
+        if (hasMedia || message.kind === 'sticker') return;
+        message.text = text;
+        message.edited = true;
+        scheduleSave();
+        emitToScope(scope, 'message edited', { scope, msgId, text, edited: true });
+    });
+
+    // ==========================================
     // BORRAR MENSAJES (solo el autor puede)
     // ==========================================
     socket.on('delete message', (payload) => {

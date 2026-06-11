@@ -80,6 +80,11 @@ function register(io, socket) {
         friendIdsOf(socket.userId).forEach(fid => sendFriendsList(fid));
     });
 
+    // Medición de latencia: el cliente emite con ack y mide el RTT
+    socket.on('latency ping', (cb) => {
+        if (typeof cb === 'function') cb(Date.now());
+    });
+
     socket.on('disconnect', () => {
         clearTimeout(fallbackTimer);
         console.log('Usuario desconectado:', socket.id);

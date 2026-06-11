@@ -1,5 +1,4 @@
-const { store } = require('../store');
-const { newMsgId } = require('../store');
+const { store, newMsgId, scheduleSave } = require('../store');
 const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID } = require('../users');
 const { emitToUser, storeAndEmit } = require('../realtime');
 const { respondAsBot } = require('../bot');
@@ -131,7 +130,22 @@ function register(io, socket) {
             scope,
             timestamp: new Date(m.timestamp).toISOString()
         }));
-        socket.emit('dm history', { with: payload.with, scope, messages: history });
+        socket.emit('dm history', { with: payload.with, scope, messages: history, reads: (store.reads && store.reads[scope]) || {} });
+    });
+
+    // ==========================================
+    // CONFIRMACIONES DE LECTURA (solo DMs)
+    // ==========================================
+    socket.on('dm read', (payload) => {
+        if (!socket.userId || typeof payload?.with !== 'string' || !payload.with) return;
+        const scope = dmKey(socket.userId, payload.with);
+        if (!store.dms[scope]) return; // sin conversación, nada que marcar
+        if (!store.reads) store.reads = {};
+        if (!store.reads[scope]) store.reads[scope] = {};
+        const at = Date.now();
+        store.reads[scope][socket.userId] = at;
+        scheduleSave();
+        emitToUser(payload.with, 'dm read', { scope, by: socket.userId, at });
     });
 }
 

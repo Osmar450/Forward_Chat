@@ -13,7 +13,8 @@ const store = {
     users: {},        // userId -> { userId, friendCode, name, avatar, color, banner, bio, status, createdAt }
     friendships: [],  // [ [userIdA, userIdB], ... ]
     lobby: [],        // mensajes del lobby público
-    dms: {}           // dmKey -> mensajes privados
+    dms: {},          // dmKey -> mensajes privados
+    reads: {}         // dmKey -> { userId: timestamp de última lectura }
 };
 
 function loadStore() {
@@ -24,7 +25,8 @@ function loadStore() {
                 users: raw.users || {},
                 friendships: raw.friendships || [],
                 lobby: raw.lobby || [],
-                dms: raw.dms || {}
+                dms: raw.dms || {},
+                reads: raw.reads || {}
             });
             console.log(`💾 Datos cargados: ${Object.keys(store.users).length} usuarios, ${store.lobby.length} mensajes de lobby`);
         }
@@ -70,7 +72,10 @@ function startRetentionCleanup() {
         }
         for (const key of Object.keys(store.dms)) {
             store.dms[key] = store.dms[key].filter(m => now - m.timestamp <= DM_RETENTION_MS);
-            if (store.dms[key].length === 0) delete store.dms[key];
+            if (store.dms[key].length === 0) {
+                delete store.dms[key];
+                if (store.reads) delete store.reads[key];
+            }
         }
         if (store.lobby.length !== before) scheduleSave();
     }, 60 * 60 * 1000);

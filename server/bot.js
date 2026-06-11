@@ -39,7 +39,7 @@ const availableModels = [
         model: genAI ? genAI.getGenerativeModel({
             model: 'gemini-3.1-flash-lite',
             systemInstruction: botPersona,
-            generationConfig: { maxOutputTokens: 800 }
+            generationConfig: { maxOutputTokens: 800, temperature: 0.9 }
         }) : null,
         priority: 1
     },
@@ -48,7 +48,7 @@ const availableModels = [
         model: genAI ? genAI.getGenerativeModel({
             model: 'gemini-2.5-flash',
             systemInstruction: botPersona,
-            generationConfig: { maxOutputTokens: 1500 }
+            generationConfig: { maxOutputTokens: 1500, temperature: 0.9 }
         }) : null,
         priority: 2
     }
@@ -94,7 +94,7 @@ function withTimeout(promise, ms) {
     ]);
 }
 
-async function generateBotText(contextPrompt) {
+async function generateBotText(contextPrompt, onChunk) {
     if (isInCooldown()) {
         return { text: '¡Uy broski! Me estás hablando muy rápido y mis servidores se saturaron. Dame chance 30 segundos. ⏳', model: 'cooldown' };
     }
@@ -103,9 +103,21 @@ async function generateBotText(contextPrompt) {
         if (!candidate.model) continue;
         try {
             const startTime = Date.now();
-            const result = await withTimeout(candidate.model.generateContent(contextPrompt), AI_TIMEOUT_MS);
+            // Streaming: los fragmentos van llegando al cliente en vivo vía onChunk.
+            // El timeout cubre TODO el consumo del stream, no solo la primera respuesta.
+            const consume = (async () => {
+                const result = await candidate.model.generateContentStream(contextPrompt);
+                let acc = '';
+                for await (const chunk of result.stream) {
+                    acc += chunk.text();
+                    if (onChunk && acc.trim()) onChunk(acc);
+                }
+                return acc;
+            })();
+            const text = await withTimeout(consume, AI_TIMEOUT_MS);
             console.log(`✅ ${candidate.name} respondió en ${Date.now() - startTime}ms`);
-            return { text: result.response.text(), model: candidate.name };
+            if (text.trim()) return { text, model: candidate.name };
+            lastError = new Error('respuesta vacía');
         } catch (error) {
             lastError = error;
             console.warn(`⚠️ ${candidate.name} falló: ${error.message}`);
@@ -143,9 +155,10 @@ async function generateBotImage(imagePrompt) {
     return `/uploads/${filename}`;
 }
 
-function buildBotMessage(text, imageUrls = []) {
+function buildBotMessage(text, imageUrls = [], clientId = null) {
     return {
         msgId: newMsgId(),
+        clientId,
         userId: BOT_ID,
         text,
         imageUrls,
@@ -180,11 +193,18 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
         // Construir contexto según el ámbito (lobby público o DM privado).
         // Se incluyen los mensajes del propio bot para que tenga continuidad
         // conversacional real y no se repita.
+        // Resumen legible de cada mensaje (incluye media para mejor contexto)
+        const lineFor = (m, selfLabel) => {
+            const who = m.userId === BOT_ID ? 'ForwardBot (tú)' : selfLabel(m);
+            const media = (m.imageUrls && m.imageUrls.length > 0) ? ' [envió una imagen]' : m.audioUrl ? ' [envió una nota de voz]' : '';
+            return `- ${who}: "${(m.text || '').substring(0, 280)}"${media}`;
+        };
+
         let contextPrompt = prompt;
         if (scope === 'lobby') {
             const recentMessages = store.lobby
-                .slice(-16)
-                .map(m => `- ${m.userId === BOT_ID ? 'ForwardBot (tú)' : (m.profile?.name || 'Usuario')}: "${(m.text || '').substring(0, 280)}"`);
+                .slice(-20)
+                .map(m => lineFor(m, (x) => x.profile?.name || 'Usuario'));
             const connectedUsers = Array.from(userSockets.keys())
                 .map(uid => store.users[uid]?.name)
                 .filter(Boolean)
@@ -195,8 +215,8 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
             if (contextInfo.length) contextPrompt = `${contextInfo.join('\n\n')}\n\nAhora ${userName} te dice: "${prompt}"\n\nResponde a ${userName} con continuidad (no saludes de nuevo si ya estaban platicando).`;
         } else {
             const history = (store.dms[scope] || [])
-                .slice(-16)
-                .map(m => `${m.userId === BOT_ID ? 'ForwardBot (tú)' : userName}: "${(m.text || '').substring(0, 280)}"`);
+                .slice(-20)
+                .map(m => lineFor(m, () => userName));
             if (history.length) {
                 contextPrompt = `Chat PRIVADO uno-a-uno con ${userName}. Historial (de la más vieja a la más nueva):\n${history.join('\n')}\n\nNuevo mensaje de ${userName}: "${prompt}"\n\nResponde con continuidad y memoria de lo anterior.`;
             }
@@ -205,8 +225,24 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
             contextPrompt = `${userName} está respondiendo directamente a este mensaje tuyo: "${String(replyContext).substring(0, 280)}"\n\n${contextPrompt}`;
         }
 
-        const { text } = await generateBotText(contextPrompt);
-        storeAndEmit(scope, buildBotMessage(text));
+        // Streaming en vivo: el cliente pinta una burbuja del bot que crece
+        // con cada fragmento; el mensaje final la reemplaza vía clientId.
+        const streamId = `bs-${newMsgId()}`;
+        let lastEmit = 0;
+        let typingCleared = false;
+        const onChunk = (acc) => {
+            const now = Date.now();
+            if (now - lastEmit < 120) return; // throttle: no saturar el socket
+            lastEmit = now;
+            if (!typingCleared) {
+                typingCleared = true;
+                emitToScope(scope, 'typing', { scope, userId: BOT_ID, name: 'ForwardBot', typing: false });
+            }
+            emitToScope(scope, 'bot stream', { scope, streamId, text: acc, done: false });
+        };
+
+        const { text } = await generateBotText(contextPrompt, onChunk);
+        storeAndEmit(scope, buildBotMessage(text, [], streamId));
     } finally {
         emitToScope(scope, 'typing', { scope, userId: BOT_ID, name: 'ForwardBot', typing: false });
     }
