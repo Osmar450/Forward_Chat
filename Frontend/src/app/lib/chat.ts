@@ -110,6 +110,9 @@ export const messagePreview = (kind: MessageKind, text?: string) => {
   return trimmed || "Mensaje";
 };
 
+/** Escapa metacaracteres para usar texto literal dentro de una RegExp. */
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const colorForUser = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {

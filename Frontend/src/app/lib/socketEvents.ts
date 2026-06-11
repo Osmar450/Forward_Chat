@@ -64,6 +64,13 @@ export interface OlderMessagesPayload {
   hasMore: boolean;
 }
 
+export interface SearchResultsPayload {
+  with: string;
+  query: string;
+  total: number;
+  messages: ServerMessagePayload[];
+}
+
 export interface ReactionUpdatedPayload {
   scope: string;
   msgId: string | number;

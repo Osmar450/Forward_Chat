@@ -4,6 +4,7 @@ const { emitToUser, emitToScope, storeAndEmit } = require('../realtime');
 const { respondAsBot } = require('../bot');
 const { logger } = require('../logger');
 const { fetchLinkPreview, extractFirstUrl } = require('../linkPreview');
+const { makeSocketRateLimiter } = require('../security');
 
 // ==========================================
 // MENSAJES (lobby + DM) Y TYPING
@@ -13,6 +14,9 @@ const RATE_LIMIT_WINDOW = 10000;
 const MAX_MESSAGES_PER_WINDOW = 12;
 // Tamaño de página del historial (carga inicial y cada "ver anteriores")
 const HISTORY_PAGE_SIZE = 100;
+// Máximo de coincidencias que devuelve la búsqueda en chat
+const SEARCH_PAGE_SIZE = 100;
+const searchLimiter = makeSocketRateLimiter({ windowMs: 5000, max: 15 });
 
 /**
  * Rich link previews: si el texto trae una URL, obtener metadatos OpenGraph
@@ -181,6 +185,36 @@ function register(io, socket) {
                 timestamp: new Date(m.timestamp).toISOString()
             })),
             hasMore: older.length > page.length
+        });
+    });
+
+    // ==========================================
+    // BÚSQUEDA EN EL CHAT ACTIVO (string exacto, case-insensitive)
+    // payload: { with: 'lobby' | peerId, query }
+    // Devuelve los mensajes que coinciden para que el cliente los resalte
+    // y pueda navegar entre ellos aunque no estén cargados localmente.
+    // ==========================================
+    socket.on('search messages', (payload) => {
+        if (!socket.userId || !payload?.with) return;
+        if (!searchLimiter(socket)) return;
+        const rawQuery = typeof payload.query === 'string' ? payload.query : '';
+        const q = rawQuery.trim().toLowerCase().substring(0, 200);
+        const isLobby = payload.with === 'lobby';
+        if (!q) {
+            socket.emit('search results', { with: payload.with, query: rawQuery, total: 0, messages: [] });
+            return;
+        }
+        const list = isLobby ? store.lobby : (store.dms[dmKey(socket.userId, payload.with)] || []);
+        const matches = list.filter(m => !m.deleted && typeof m.text === 'string' && m.text.toLowerCase().includes(q));
+        const page = matches.slice(-SEARCH_PAGE_SIZE);
+        socket.emit('search results', {
+            with: payload.with,
+            query: rawQuery,
+            total: matches.length,
+            messages: page.map(m => ({
+                ...m,
+                timestamp: new Date(m.timestamp).toISOString()
+            }))
         });
     });
 

@@ -11,6 +11,7 @@ import {
   Receipt,
   STATUSES,
   Status,
+  escapeRegExp,
   messagePreview,
 } from "../../lib/chat";
 import { AudioPlayer } from "./AudioPlayer";
@@ -42,6 +43,7 @@ function MessageBubbleInner({
   selfId,
   receipt,
   isSearchCurrent,
+  highlightQuery,
   pickerOpen,
   pickerBelow,
   onTogglePicker,
@@ -62,6 +64,8 @@ function MessageBubbleInner({
   selfId: string;
   receipt: Receipt | null;
   isSearchCurrent: boolean;
+  /** Texto de búsqueda activo: las coincidencias se resaltan en la burbuja */
+  highlightQuery?: string;
   pickerOpen: boolean;
   pickerBelow?: boolean;
   onTogglePicker: (id: string | number) => void;
@@ -138,6 +142,25 @@ function MessageBubbleInner({
   };
 
   const reactionEntries = Object.entries(msg.reactions || {}).filter(([, users]) => users.length > 0);
+
+  /**
+   * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
+   * Los segmentos sin coincidencia pasan por formatText (menciones intactas).
+   */
+  const renderBody = (text?: string): React.ReactNode => {
+    const q = highlightQuery?.trim();
+    if (!q || !text || !text.toLowerCase().includes(q.toLowerCase())) return formatText(text);
+    const regex = new RegExp(`(${escapeRegExp(q)})`, "gi");
+    return text.split(regex).map((part, i) =>
+      part.toLowerCase() === q.toLowerCase() ? (
+        <mark key={i} className="rounded-[3px] px-0.5 bg-yellow-300/80 text-black font-medium">
+          {part}
+        </mark>
+      ) : (
+        <React.Fragment key={i}>{formatText(part)}</React.Fragment>
+      )
+    );
+  };
 
   /** Hora + "editado" + checks de lectura, compartido entre tipos de mensaje. */
   const metaRow = (extraClass = "") => (
@@ -297,7 +320,7 @@ function MessageBubbleInner({
                      línea; en largos la hora baja sola alineada a la derecha. */
                   <div className={`px-3.5 ${showAuthor ? "pt-0.5" : "pt-2"} pb-1.5 flex flex-wrap items-end gap-x-2`}>
                     <div className={`min-w-0 font-comic font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>
-                      {formatText(msg.text)}
+                      {renderBody(msg.text)}
                       {msg.streaming && (
                         <motion.span
                           animate={{ opacity: [1, 0.25, 1] }}
@@ -353,7 +376,7 @@ function MessageBubbleInner({
                   <div className="px-2 pt-1">
                     <img src={msg.imageUrl} alt={msg.text || "Imagen adjunta"} className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
                     {msg.text && (
-                      <div className={`px-2 pt-2 font-comic ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{formatText(msg.text)}</div>
+                      <div className={`px-2 pt-2 font-comic ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{renderBody(msg.text)}</div>
                     )}
                   </div>
                 )}

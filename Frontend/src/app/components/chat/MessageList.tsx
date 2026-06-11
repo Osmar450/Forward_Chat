@@ -72,6 +72,7 @@ export function MessageList({
   peerReadAt,
   showReceipts,
   searchActive,
+  searchQuery,
   currentSearchId,
   serverHasMore,
   onLoadOlder,
@@ -101,6 +102,8 @@ export function MessageList({
   peerReadAt: number;
   showReceipts: boolean;
   searchActive: boolean;
+  /** Texto buscado: se resalta dentro de las burbujas */
+  searchQuery: string;
   currentSearchId: string | number | null;
   /** El servidor aún tiene historial más antiguo (paginación por cursor) */
   serverHasMore: boolean;
@@ -269,6 +272,7 @@ export function MessageList({
                       selfId={selfId}
                       receipt={receiptFor(m)}
                       isSearchCurrent={currentSearchId != null && m.id === currentSearchId}
+                      highlightQuery={searchActive ? searchQuery : undefined}
                       pickerBelow={idx < 2}
                       pickerOpen={openMenuFor === m.id}
                       onTogglePicker={onTogglePicker}

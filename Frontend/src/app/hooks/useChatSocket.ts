@@ -26,6 +26,7 @@ import {
   OlderMessagesPayload,
   ProfilePayload,
   ReactionUpdatedPayload,
+  SearchResultsPayload,
   ServerMessagePayload,
   SessionProfilePayload,
   TypingPayload,
@@ -67,6 +68,8 @@ export interface ChatSocketApi {
   clearTypingState: () => void;
   requestDmHistory: (peer: string) => void;
   requestOlderMessages: () => void;
+  /** Búsqueda exacta en el servidor; los resultados se fusionan en el chat */
+  searchMessages: (query: string) => void;
   editMessage: (msgId: string | number, text: string) => void;
   deleteMessage: (msgId: string | number) => void;
   toggleReaction: (msgId: string | number, reactionId: string) => void;
@@ -318,6 +321,25 @@ export function useChatSocket(options: {
       setHistoryMore((prev) => ({ ...prev, [chatKey]: !!payload.hasMore }));
     });
 
+    // Resultados de búsqueda del servidor: se fusionan en la conversación
+    // (dedupe por id, orden por timestamp) para poder saltar a coincidencias
+    // que aún no estaban cargadas por el cursor.
+    newSocket.on("search results", (payload: SearchResultsPayload) => {
+      if (!payload?.with || !Array.isArray(payload.messages)) return;
+      const chatKey = payload.with === "lobby" ? LOBBY : payload.with;
+      const parsed = payload.messages.map((data) => {
+        if (data.profile) upsertParticipant(data.profile);
+        return parseServerMessage(data, resolveMediaUrl);
+      });
+      setChats((prev) => {
+        const list = prev[chatKey] || [];
+        const existing = new Set(list.map((m) => m.id));
+        const fresh = parsed.filter((m) => !existing.has(m.id));
+        if (fresh.length === 0) return prev;
+        return { ...prev, [chatKey]: [...list, ...fresh].sort((a, b) => a.timestamp - b.timestamp) };
+      });
+    });
+
     newSocket.on("message edited", (payload: MessageEditedPayload) => {
       if (!payload?.msgId || typeof payload.text !== "string") return;
       patchMessage(payload.scope, payload.msgId, { text: payload.text, edited: true });
@@ -560,6 +582,16 @@ export function useChatSocket(options: {
     });
   }, []);
 
+  const searchMessages = useCallback((query: string) => {
+    const chatKey = activeChatRef.current || LOBBY;
+    const q = query.trim();
+    if (!socketRef.current || !isConnectedRef.current || !q) return;
+    socketRef.current.emit("search messages", {
+      with: chatKey === LOBBY ? "lobby" : chatKey,
+      query: q,
+    });
+  }, []);
+
   const isLocalOnly = (id: string | number) => String(id).startsWith("local-") || String(id).startsWith("c-");
 
   const editMessage = useCallback((msgId: string | number, text: string) => {
@@ -659,6 +691,7 @@ export function useChatSocket(options: {
     clearTypingState,
     requestDmHistory,
     requestOlderMessages,
+    searchMessages,
     editMessage,
     deleteMessage,
     toggleReaction,

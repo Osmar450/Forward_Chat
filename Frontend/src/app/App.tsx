@@ -652,6 +652,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, activeChat]);
 
+  // Búsqueda en el servidor (string exacto) con debounce: cubre mensajes
+  // que aún no están cargados localmente; los resultados se fusionan al chat.
+  useEffect(() => {
+    if (!searchOpen || !activeChat) return;
+    const q = searchQuery.trim();
+    if (q.length < 2) return;
+    const timer = window.setTimeout(() => chat.searchMessages(q), 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, searchOpen, activeChat]);
+
   // Desplazarse a la coincidencia actual
   useEffect(() => {
     const id = searchMatches[searchIndex];
@@ -815,6 +826,7 @@ export default function App() {
               peerReadAt={activeChat !== LOBBY ? peerReads[activeChat!] || 0 : 0}
               showReceipts={activeChat !== LOBBY && !activePeer?.isBot}
               searchActive={searchOpen && searchQuery.trim().length > 0}
+              searchQuery={searchQuery}
               currentSearchId={currentSearchId}
               serverHasMore={!!historyMore[activeChat!]}
               onLoadOlder={chat.requestOlderMessages}
