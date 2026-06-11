@@ -29,6 +29,7 @@ import {
   SearchResultsPayload,
   ServerMessagePayload,
   SessionProfilePayload,
+  SmartRepliesPayload,
   TypingPayload,
   chatKeyFromScope,
 } from "../lib/socketEvents";
@@ -55,6 +56,8 @@ export interface ChatSocketApi {
   typingUsers: Record<string, Record<string, string>>;
   peerReads: Record<string, number>;
   historyMore: Record<string, boolean>;
+  /** Sugerencias de respuesta rápida (IA) por chat; se limpian al responder */
+  smartReplies: Record<string, string[]>;
   // ---- acciones ----
   setChats: React.Dispatch<React.SetStateAction<Record<string, Message[]>>>;
   setUnread: React.Dispatch<React.SetStateAction<Record<string, number>>>;
@@ -100,6 +103,7 @@ export function useChatSocket(options: {
   const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({});
   const [peerReads, setPeerReads] = useState<Record<string, number>>({});
   const [historyMore, setHistoryMore] = useState<Record<string, boolean>>({});
+  const [smartReplies, setSmartReplies] = useState<Record<string, string[]>>({});
 
   // Refs: los handlers del socket nunca deben capturar estado obsoleto
   const socketRef = useRef<Socket | null>(null);
@@ -170,6 +174,13 @@ export function useChatSocket(options: {
     });
     if (msg.authorId === selfIdRef.current) {
       onOwnEchoRef.current?.();
+      // Al responder (desde cualquier dispositivo), las sugerencias caducan
+      setSmartReplies((prev) => {
+        if (!prev[chatKey]) return prev;
+        const next = { ...prev };
+        delete next[chatKey];
+        return next;
+      });
     } else if (activeChatRef.current !== chatKey) {
       setUnread((u) => ({ ...u, [chatKey]: (u[chatKey] || 0) + 1 }));
     } else if (!isAtBottomRef.current) {
@@ -367,6 +378,16 @@ export function useChatSocket(options: {
     newSocket.on("link preview", (payload: LinkPreviewPayload) => {
       if (!payload?.msgId || !payload.preview) return;
       patchMessage(payload.scope, payload.msgId, { linkPreview: payload.preview });
+    });
+
+    // Smart Replies (IA): chips de respuesta rápida para el DM del scope
+    newSocket.on("smart replies", (payload: SmartRepliesPayload) => {
+      if (!payload?.scope || !Array.isArray(payload.replies)) return;
+      const chatKey = chatKeyFromScope(payload.scope, selfIdRef.current, LOBBY);
+      if (chatKey === LOBBY) return;
+      const replies = payload.replies.filter((r) => typeof r === "string" && r.trim()).slice(0, 3);
+      if (replies.length === 0) return;
+      setSmartReplies((prev) => ({ ...prev, [chatKey]: replies }));
     });
 
     newSocket.on("dm read", (payload: DmReadPayload) => {
@@ -680,6 +701,7 @@ export function useChatSocket(options: {
     typingUsers,
     peerReads,
     historyMore,
+    smartReplies,
     setChats,
     setUnread,
     resetUnreadCount,

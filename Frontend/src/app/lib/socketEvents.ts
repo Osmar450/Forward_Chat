@@ -115,6 +115,12 @@ export interface LinkPreviewPayload {
   preview: LinkPreview;
 }
 
+export interface SmartRepliesPayload {
+  scope: string;
+  msgId: string | number;
+  replies: string[];
+}
+
 export interface FriendAddedPayload {
   profile?: ProfilePayload;
 }

@@ -145,6 +145,7 @@ export default function App() {
     typingUsers,
     peerReads,
     historyMore,
+    smartReplies,
   } = chat;
 
   const participantsRef = useRef(participants);
@@ -871,6 +872,8 @@ export default function App() {
               onCancelEdit={() => setEditingMsg(null)}
               quickSuggestions={activeMessages.length <= 1 ? botSuggestions : []}
               onQuickSuggestion={sendTextValue}
+              smartReplies={activeChat !== LOBBY ? smartReplies[activeChat!] || [] : []}
+              onSmartReply={sendTextValue}
               showStickers={showStickers}
               onToggleStickers={() => setShowStickers(!showStickers)}
               onCloseStickers={() => setShowStickers(false)}

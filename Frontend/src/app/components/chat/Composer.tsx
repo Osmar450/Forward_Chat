@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Image as ImageIcon, Mic, Pencil, Reply, Send, Sparkles, Sticker } from "lucide-react";
+import { Check, Image as ImageIcon, Mic, Pencil, Reply, Send, Sparkles, Sticker, WandSparkles } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { LOBBY, Message, Participant, messagePreview } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
@@ -30,6 +30,8 @@ export function Composer({
   onCancelEdit,
   quickSuggestions,
   onQuickSuggestion,
+  smartReplies,
+  onSmartReply,
   showStickers,
   onToggleStickers,
   onCloseStickers,
@@ -67,6 +69,9 @@ export function Composer({
   onCancelEdit: () => void;
   quickSuggestions: string[];
   onQuickSuggestion: (text: string) => void;
+  /** Smart Replies (IA): chips de respuesta rápida sobre el input */
+  smartReplies: string[];
+  onSmartReply: (text: string) => void;
   showStickers: boolean;
   onToggleStickers: () => void;
   onCloseStickers: () => void;
@@ -181,6 +186,31 @@ export function Composer({
               >
                 <Sparkles className="size-3 text-purple-400" />
                 {s}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Smart Replies (IA): respuestas sugeridas tras recibir un DM */}
+      <AnimatePresence>
+        {!isEditing && !replyingTo && !recording && smartReplies.length > 0 && !draft && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex gap-2 px-3 pt-2 overflow-x-auto [scrollbar-width:none]"
+            aria-label="Respuestas sugeridas"
+          >
+            {smartReplies.map((reply) => (
+              <button
+                key={reply}
+                onClick={() => onSmartReply(reply)}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${t.borderStrong} ${t.inputBg} ${t.text} text-xs hover:opacity-80 transition-opacity shadow-sm`}
+              >
+                <WandSparkles className={`size-3 ${t.accentText}`} />
+                {reply}
               </button>
             ))}
           </motion.div>

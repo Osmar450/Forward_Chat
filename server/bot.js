@@ -173,6 +173,49 @@ function buildBotMessage(text, imageUrls = [], clientId = null) {
 
 const IMAGE_COMMAND = /^(?:crea|genera|dibuja|haz|pintame|píntame)\s+(?:una\s+imagen\s+de\s+|un\s+dibujo\s+de\s+|una\s+foto\s+de\s+)?(.+)/i;
 
+// ==========================================
+// SMART REPLIES: asistente invisible que sugiere respuestas rápidas
+// Modelo separado, sin la persona del bot, con salida JSON estricta.
+// ==========================================
+const smartReplyModel = genAI ? genAI.getGenerativeModel({
+    model: 'gemini-3.1-flash-lite',
+    generationConfig: { maxOutputTokens: 150, temperature: 0.7, responseMimeType: 'application/json' }
+}) : null;
+
+const SMART_REPLY_TIMEOUT_MS = 8000;
+
+/**
+ * Genera 3 respuestas cortas y contextuales que `recipientName` podría enviar
+ * como siguiente mensaje en el DM `scope`. Nunca lanza: ante cualquier fallo
+ * devuelve [] y el cliente simplemente no muestra chips.
+ */
+async function generateSmartReplies(scope, recipientName) {
+    if (!smartReplyModel || isInCooldown()) return [];
+    const history = (store.dms[scope] || [])
+        .filter(m => !m.deleted && m.text)
+        .slice(-8)
+        .map(m => `- ${m.profile?.name || 'Usuario'}: "${String(m.text).substring(0, 200)}"`);
+    if (history.length === 0) return [];
+    const prompt = `Eres un asistente invisible que sugiere respuestas rápidas en un chat privado en español.
+Conversación reciente (de la más vieja a la más nueva):
+${history.join('\n')}
+
+Sugiere exactamente 3 respuestas cortas (máximo 5 palabras cada una) que "${recipientName}" podría enviar ahora como siguiente mensaje. Deben ser naturales, casuales, variadas entre sí y coherentes con el último mensaje recibido. Sin emojis, sin comillas, sin numeración.
+Devuelve SOLO un array JSON de 3 strings.`;
+    try {
+        const result = await withTimeout(smartReplyModel.generateContent(prompt), SMART_REPLY_TIMEOUT_MS);
+        const parsed = JSON.parse(result.response.text());
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter(s => typeof s === 'string' && s.trim())
+            .map(s => s.trim().substring(0, 60))
+            .slice(0, 3);
+    } catch (error) {
+        logger.warn('Smart replies fallaron', { error });
+        return [];
+    }
+}
+
 async function respondAsBot(scope, prompt, userName, replyContext) {
     modelMetrics.totalRequests++;
     emitToScope(scope, 'typing', { scope, userId: BOT_ID, name: 'ForwardBot', typing: true });
@@ -251,5 +294,6 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
 
 module.exports = {
     respondAsBot,
+    generateSmartReplies,
     logBotConfig
 };

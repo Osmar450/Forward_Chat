@@ -1,10 +1,11 @@
 const { store, newMsgId, scheduleSave } = require('../store');
 const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID } = require('../users');
 const { emitToUser, emitToScope, storeAndEmit } = require('../realtime');
-const { respondAsBot } = require('../bot');
+const { respondAsBot, generateSmartReplies } = require('../bot');
 const { logger } = require('../logger');
 const { fetchLinkPreview, extractFirstUrl } = require('../linkPreview');
 const { makeSocketRateLimiter } = require('../security');
+const { isOnline } = require('../presence');
 
 // ==========================================
 // MENSAJES (lobby + DM) Y TYPING
@@ -31,6 +32,31 @@ function attachLinkPreview(scope, message) {
         scheduleSave();
         emitToScope(scope, 'link preview', { scope, msgId: message.msgId, preview });
     }).catch((e) => logger.warn('attachLinkPreview falló', { error: e }));
+}
+
+/**
+ * Smart Replies: tras un DM humano-a-humano, generar 3 sugerencias para el
+ * receptor. Debounce por scope: si llegan varios mensajes seguidos, solo el
+ * último dispara la generación. Nunca bloquea el envío del mensaje.
+ */
+const smartReplyTimers = new Map();
+const SMART_REPLY_DEBOUNCE_MS = 900;
+
+function queueSmartReplies(scope, message, recipientId) {
+    const recipient = store.users[recipientId];
+    if (!recipient || !isOnline(recipientId)) return;
+    const prevTimer = smartReplyTimers.get(scope);
+    if (prevTimer) clearTimeout(prevTimer);
+    smartReplyTimers.set(scope, setTimeout(() => {
+        smartReplyTimers.delete(scope);
+        generateSmartReplies(scope, recipient.name || 'Usuario')
+            .then((replies) => {
+                if (replies.length > 0) {
+                    emitToUser(recipientId, 'smart replies', { scope, msgId: message.msgId, replies });
+                }
+            })
+            .catch((e) => logger.warn('queueSmartReplies falló', { error: e }));
+    }, SMART_REPLY_DEBOUNCE_MS));
 }
 
 function register(io, socket) {
@@ -144,6 +170,8 @@ function register(io, socket) {
 
         if (isBotDm && text.trim()) {
             respondAsBot(scope, text.trim(), user.name, msg.replyTo?.text || null).catch(e => logger.error('Bot error en DM', { error: e }));
+        } else if (!isBotDm && text.trim()) {
+            queueSmartReplies(scope, messageData, to);
         }
     });
 
