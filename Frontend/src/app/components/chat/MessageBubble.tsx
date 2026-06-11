@@ -155,11 +155,10 @@ function MessageBubbleInner({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
       data-msgid={msg.id}
       className={`cv-row flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
     >
@@ -234,8 +233,8 @@ function MessageBubbleInner({
           )}
 
           <motion.div
-            layout
             animate={{ x: swipeOffset }}
+            transition={{ type: "tween", duration: 0.15, ease: "easeOut" }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
