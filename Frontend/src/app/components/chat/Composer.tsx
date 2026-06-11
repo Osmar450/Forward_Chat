@@ -19,6 +19,7 @@ export function Composer({
   participants,
   draft,
   canSend,
+  typingNames,
   onDraftChange,
   onKeyDown,
   onSend,
@@ -55,6 +56,7 @@ export function Composer({
   participants: Record<string, Participant>;
   draft: string;
   canSend: boolean;
+  typingNames: string[];
   onDraftChange: (val: string) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSend: () => void;
@@ -110,8 +112,39 @@ export function Composer({
     }
   };
 
+  // WhatsApp-style: al escribir, los iconos periféricos se ocultan para dar
+  // todo el ancho al texto; al vaciar, vuelven con una transición fluida.
+  const showPeripherals = !isEditing && draft.length === 0;
+
   return (
     <div className={`${t.panel} border-t ${t.border} shrink-0`}>
+      {/* "X está escribiendo..." justo encima de la barra de entrada */}
+      <AnimatePresence>
+        {typingNames.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+            aria-live="polite"
+          >
+            <div className={`flex items-center gap-1.5 px-4 pt-1.5 text-[11px] ${t.accentText}`}>
+              <span className="flex gap-0.5">
+                {[0, 1, 2].map((i) => (
+                  <motion.span
+                    key={i}
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                    className="size-1 rounded-full bg-current"
+                  />
+                ))}
+              </span>
+              {typingNames.join(", ")} {typingNames.length > 1 ? "están escribiendo" : "está escribiendo"}...
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {isEditing && (
           <motion.div
@@ -217,40 +250,49 @@ export function Composer({
               }}
             />
 
-            {!isEditing && (
-              <>
-                <motion.button
-                  whileHover={{ y: -2, rotate: -8 }}
-                  whileTap={{ scale: 0.85, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 16 }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`p-2.5 rounded-xl ${t.iconBtn}`}
-                  aria-label="Adjuntar imagen"
+            <AnimatePresence initial={false}>
+              {showPeripherals && (
+                <motion.div
+                  key="peripherals"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: "auto", opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  className="flex items-center gap-2 overflow-hidden shrink-0"
                 >
-                  <ImageIcon className="size-5" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ y: -2, scale: 1.05 }}
-                  whileTap={{ scale: 0.85 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 16 }}
-                  onClick={onToggleStickers}
-                  className={`p-2.5 rounded-xl ${showStickers ? `${t.accent} text-white` : t.iconBtn}`}
-                  aria-label="Stickers"
-                >
-                  <Sticker className="size-5" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ y: -2, scale: 1.05 }}
-                  whileTap={{ scale: 0.85 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 16 }}
-                  onClick={onStartRecording}
-                  className={`p-2.5 rounded-xl ${t.iconBtn}`}
-                  aria-label="Grabar audio"
-                >
-                  <Mic className="size-5" />
-                </motion.button>
-              </>
-            )}
+                  <motion.button
+                    whileHover={{ y: -2, rotate: -8 }}
+                    whileTap={{ scale: 0.85, rotate: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 16 }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`p-2.5 rounded-xl ${t.iconBtn}`}
+                    aria-label="Adjuntar imagen"
+                  >
+                    <ImageIcon className="size-5" />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -2, scale: 1.05 }}
+                    whileTap={{ scale: 0.85 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 16 }}
+                    onClick={onToggleStickers}
+                    className={`p-2.5 rounded-xl ${showStickers ? `${t.accent} text-white` : t.iconBtn}`}
+                    aria-label="Stickers"
+                  >
+                    <Sticker className="size-5" />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -2, scale: 1.05 }}
+                    whileTap={{ scale: 0.85 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 16 }}
+                    onClick={onStartRecording}
+                    className={`p-2.5 rounded-xl ${t.iconBtn}`}
+                    aria-label="Grabar audio"
+                  >
+                    <Mic className="size-5" />
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="flex-1 relative">
               <AnimatePresence>
                 {mentionSearch !== null && filteredMentions.length > 0 && (
