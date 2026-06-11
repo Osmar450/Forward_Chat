@@ -161,7 +161,7 @@ function MessageBubbleInner({
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
       data-msgid={msg.id}
-      className={`flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
+      className={`cv-row flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
     >
       {!isMine && (
         <motion.button
@@ -258,15 +258,22 @@ function MessageBubbleInner({
             ) : (
               <>
                 {msg.replyTo && (
+                  /* Cita elegante: borde izquierdo marcado + fondo semitransparente,
+                     claramente diferenciada del mensaje nuevo sin romper el padding */
                   <div
-                    className={`mx-3 mt-2 rounded-lg px-2.5 py-1.5 border-l-2 ${
-                      isMine ? "bg-white/20 border-white/70 text-white/90" : msg.isBot ? "bg-purple-500/15 border-purple-400/70" : `${t.inputBg} border ${t.border} ${t.text}`
+                    className={`mx-2 mt-2 rounded-md rounded-l-sm pl-2.5 pr-2.5 py-1.5 border-l-[3px] ${
+                      isMine
+                        ? "bg-black/20 border-white/80 text-white/90"
+                        : msg.isBot
+                          ? "bg-purple-500/15 border-purple-400"
+                          : `${t.isLight ? "bg-black/5" : "bg-white/5"} ${t.text}`
                     }`}
+                    style={!isMine && !msg.isBot ? { borderLeftColor: t.accentHex } : undefined}
                   >
                     <div className={`text-[10px] font-pixel-ui tracking-widest ${isMine ? "text-white/85" : t.accentText}`}>
                       {(msg.replyTo.authorName || "anónimo").toUpperCase()}
                     </div>
-                    <div className={`text-xs line-clamp-2 break-words [overflow-wrap:anywhere] ${isMine ? "text-white/90" : t.textMuted}`}>
+                    <div className={`text-xs line-clamp-2 break-words ${isMine ? "text-white/80" : t.textMuted}`}>
                       {messagePreview(msg.replyTo.kind, msg.replyTo.text === "sticker_file" ? undefined : msg.replyTo.text)}
                     </div>
                   </div>
@@ -297,6 +304,45 @@ function MessageBubbleInner({
                     </div>
                     {!msg.streaming && metaRow("ml-auto")}
                   </div>
+                )}
+                {msg.kind === "text" && msg.linkPreview && (
+                  /* Rich link preview (OpenGraph) servido por el backend */
+                  <a
+                    href={msg.linkPreview.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className={`block mx-2 mb-2 rounded-lg overflow-hidden border transition-opacity hover:opacity-85 ${
+                      isMine ? "bg-black/20 border-white/20" : `${t.isLight ? "bg-black/5" : "bg-white/5"} ${t.border}`
+                    }`}
+                  >
+                    {msg.linkPreview.image && (
+                      <img
+                        src={msg.linkPreview.image}
+                        alt=""
+                        loading="lazy"
+                        className="w-full max-h-36 object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )}
+                    <div className="px-2.5 py-2">
+                      {msg.linkPreview.siteName && (
+                        <div className={`text-[9px] font-pixel-ui tracking-widest uppercase ${isMine ? "text-white/60" : t.accentText}`}>
+                          {msg.linkPreview.siteName}
+                        </div>
+                      )}
+                      <div className={`text-xs font-semibold line-clamp-2 ${isMine ? "text-white" : t.text}`}>
+                        {msg.linkPreview.title}
+                      </div>
+                      {msg.linkPreview.description && (
+                        <div className={`text-[11px] line-clamp-2 mt-0.5 ${isMine ? "text-white/70" : t.textMuted}`}>
+                          {msg.linkPreview.description}
+                        </div>
+                      )}
+                    </div>
+                  </a>
                 )}
                 {msg.kind === "image" && msg.imageUrl && (
                   <div className="px-2 pt-1">

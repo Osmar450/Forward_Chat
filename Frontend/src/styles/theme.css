@@ -217,6 +217,14 @@
     background: transparent;
   }
 
+  /* Virtualización nativa: el navegador no renderiza filas de chat fuera
+     de pantalla (junto con la ventana de mensajes mantiene el scroll fluido
+     con miles de mensajes) */
+  .cv-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
   /* Respeto del sistema: menos movimiento para quien lo pide */
   @media (prefers-reduced-motion: reduce) {
     *,
