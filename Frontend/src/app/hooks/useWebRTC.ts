@@ -36,6 +36,8 @@ const ICE_SERVERS = buildIceServers();
 
 export type CallKind = "audio" | "video";
 export type CallState = "idle" | "incoming" | "outgoing" | "active";
+/** Calidad de la llamada medida con getStats (RTT + pérdida de paquetes). */
+export type CallQuality = "good" | "fair" | "poor" | "reconnecting" | null;
 
 export type IncomingCall = { from: string; fromName: string; kind: CallKind; offer: RTCSessionDescriptionInit };
 export type VoiceMember = { userId: string; name: string; video: boolean };
@@ -52,6 +54,17 @@ export type WebRTCApi = {
   voiceMembers: VoiceMember[];
   muted: boolean;
   cameraOff: boolean;
+  /** Dispositivos disponibles (se llenan al iniciar la llamada) */
+  mics: MediaDeviceInfo[];
+  cams: MediaDeviceInfo[];
+  speakers: MediaDeviceInfo[];
+  micId: string | null;
+  camId: string | null;
+  /** sinkId para los <audio> remotos; lo aplica la UI de llamada */
+  speakerId: string | null;
+  callQuality: CallQuality;
+  /** RTT de la conexión P2P en ms (null si no se pudo medir) */
+  callRtt: number | null;
   startCall: (peerId: string, kind: CallKind) => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
@@ -59,6 +72,11 @@ export type WebRTCApi = {
   joinVoice: (kind: CallKind) => Promise<void>;
   toggleMute: () => void;
   toggleCamera: () => void;
+  setMic: (deviceId: string) => Promise<void>;
+  setCam: (deviceId: string) => Promise<void>;
+  setSpeaker: (deviceId: string) => void;
+  /** Cambia a la siguiente cámara disponible (frontal/trasera en móvil) */
+  cycleCamera: () => Promise<void>;
 };
 
 const CALL_TIMEOUT_MS = 30000;
@@ -76,9 +94,20 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
   const [voiceMembers, setVoiceMembers] = useState<VoiceMember[]>([]);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);
+  const [speakers, setSpeakers] = useState<MediaDeviceInfo[]>([]);
+  const [micId, setMicId] = useState<string | null>(null);
+  const [camId, setCamId] = useState<string | null>(null);
+  const [speakerId, setSpeakerId] = useState<string | null>(null);
+  const [callQuality, setCallQuality] = useState<CallQuality>(null);
+  const [callRtt, setCallRtt] = useState<number | null>(null);
 
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const mutedRef = useRef(false);
+  const cameraOffRef = useRef(false);
+  const reconnectTimersRef = useRef<Map<string, number>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const callStateRef = useRef<CallState>("idle");
   const callScopeRef = useRef<string | null>(null);
@@ -94,6 +123,8 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
   callKindRef.current = callKind;
   incomingRef.current = incoming;
   localStreamRef.current = localStream;
+  mutedRef.current = muted;
+  cameraOffRef.current = cameraOff;
 
   // ---------- Permisos (lazy, controlados desde el menú) ----------
   const checkPerms = useCallback((kind: CallKind): boolean => {
@@ -218,6 +249,88 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     setLocalStream(null);
   }, []);
 
+  // ---------- Dispositivos (selección de mic/cámara/altavoz) ----------
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setMics(all.filter((d) => d.kind === "audioinput" && d.deviceId));
+      setCams(all.filter((d) => d.kind === "videoinput" && d.deviceId));
+      setSpeakers(all.filter((d) => d.kind === "audiooutput" && d.deviceId));
+      // Reflejar los dispositivos realmente en uso
+      const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+      const videoTrack = localStreamRef.current?.getVideoTracks()[0];
+      if (audioTrack) setMicId(audioTrack.getSettings().deviceId || null);
+      if (videoTrack) setCamId(videoTrack.getSettings().deviceId || null);
+    } catch { /* permisos aún no concedidos */ }
+  }, []);
+
+  /** Reemplaza la pista local (audio o video) en el stream y en todos los peers. */
+  const replaceLocalTrack = useCallback(async (kind: "audio" | "video", constraints: MediaTrackConstraints) => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const fresh = await navigator.mediaDevices.getUserMedia(
+      kind === "audio"
+        ? { audio: { echoCancellation: true, noiseSuppression: true, ...constraints } }
+        : { video: { width: { ideal: 640 }, height: { ideal: 480 }, ...constraints } }
+    );
+    const newTrack = kind === "audio" ? fresh.getAudioTracks()[0] : fresh.getVideoTracks()[0];
+    if (!newTrack) return;
+    // Respetar mute/cámara apagada del usuario
+    newTrack.enabled = kind === "audio" ? !mutedRef.current : !cameraOffRef.current;
+    const old = kind === "audio" ? stream.getAudioTracks() : stream.getVideoTracks();
+    await Promise.all(
+      Array.from(pcsRef.current.values()).map((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === kind);
+        return sender ? sender.replaceTrack(newTrack).catch(() => {}) : Promise.resolve();
+      })
+    );
+    old.forEach((tr) => {
+      tr.stop();
+      stream.removeTrack(tr);
+    });
+    stream.addTrack(newTrack);
+    // Descartar pistas extra que getUserMedia haya abierto
+    fresh.getTracks().forEach((tr) => {
+      if (tr !== newTrack) tr.stop();
+    });
+    // Nuevo objeto de estado para que la UI re-renderice la vista previa
+    setLocalStream(stream);
+    if (kind === "audio") setMicId(newTrack.getSettings().deviceId || null);
+    else setCamId(newTrack.getSettings().deviceId || null);
+  }, []);
+
+  const setMic = useCallback(async (deviceId: string) => {
+    try {
+      await replaceLocalTrack("audio", { deviceId: { exact: deviceId } });
+      toast.success("Micrófono cambiado");
+    } catch {
+      toast.error("No se pudo cambiar el micrófono");
+    }
+  }, [replaceLocalTrack]);
+
+  const setCam = useCallback(async (deviceId: string) => {
+    try {
+      await replaceLocalTrack("video", { deviceId: { exact: deviceId } });
+      toast.success("Cámara cambiada");
+    } catch {
+      toast.error("No se pudo cambiar la cámara");
+    }
+  }, [replaceLocalTrack]);
+
+  const setSpeaker = useCallback((deviceId: string) => {
+    setSpeakerId(deviceId);
+  }, []);
+
+  const cycleCamera = useCallback(async () => {
+    const list = cams;
+    if (list.length < 2) return;
+    const current = localStreamRef.current?.getVideoTracks()[0]?.getSettings().deviceId;
+    const idx = list.findIndex((d) => d.deviceId === current);
+    const next = list[(idx + 1) % list.length];
+    await setCam(next.deviceId);
+  }, [cams, setCam]);
+
   // ---------- Peers ----------
   const removePeer = useCallback((peerId: string) => {
     const pc = pcsRef.current.get(peerId);
@@ -227,6 +340,11 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       pc.onconnectionstatechange = null;
       pc.close();
       pcsRef.current.delete(peerId);
+    }
+    const timer = reconnectTimersRef.current.get(peerId);
+    if (timer) {
+      clearTimeout(timer);
+      reconnectTimersRef.current.delete(peerId);
     }
     pendingIceRef.current.delete(peerId);
     setRemoteStreams((prev) => {
@@ -243,6 +361,8 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       outgoingTimerRef.current = null;
     }
     Array.from(pcsRef.current.keys()).forEach(removePeer);
+    reconnectTimersRef.current.forEach((t) => clearTimeout(t));
+    reconnectTimersRef.current.clear();
     stopLocal();
     setRemoteStreams({});
     setIncoming(null);
@@ -250,7 +370,22 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     setCallState("idle");
     setMuted(false);
     setCameraOff(false);
+    setCallQuality(null);
+    setCallRtt(null);
   }, [removePeer, stopLocal]);
+
+  /** Renegociación con ICE restart: recupera la llamada tras un cambio de red. */
+  const attemptIceRestart = useCallback(async (peerId: string) => {
+    const pc = pcsRef.current.get(peerId);
+    if (!pc || !socket) return;
+    try {
+      setCallQuality("reconnecting");
+      const channel = callScopeRef.current === "lobby" ? "lobby" : null;
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      socket.emit("call-offer", { to: peerId, offer, kind: callKindRef.current, channel, restart: true });
+    } catch { /* el peer pudo haberse cerrado */ }
+  }, [socket]);
 
   const createPeer = useCallback((peerId: string, channel: string | null) => {
     removePeer(peerId); // nunca duplicar conexiones con el mismo peer
@@ -268,24 +403,64 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       const stream = e.streams[0] || new MediaStream([e.track]);
       setRemoteStreams((prev) => ({ ...prev, [peerId]: stream }));
     };
+    const clearReconnectTimer = () => {
+      const timer = reconnectTimersRef.current.get(peerId);
+      if (timer) {
+        clearTimeout(timer);
+        reconnectTimersRef.current.delete(peerId);
+      }
+    };
     let connectedOnce = false;
     pc.oniceconnectionstatechange = () => {
       if (import.meta.env.DEV) console.log(`[rtc] ${peerId} ICE: ${pc.iceConnectionState}`);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        clearReconnectTimer();
+        setCallQuality((q) => (q === "reconnecting" ? "good" : q));
         if (!connectedOnce) {
           connectedOnce = true;
           toast.success("Audio conectado");
+        } else {
+          toast.success("Llamada recuperada");
         }
+      } else if (pc.iceConnectionState === "disconnected") {
+        // Transitorio en redes móviles: dar 3.5s antes de forzar ICE restart
+        setCallQuality("reconnecting");
+        clearReconnectTimer();
+        reconnectTimersRef.current.set(
+          peerId,
+          window.setTimeout(() => {
+            if (["disconnected", "failed"].includes(pc.iceConnectionState)) attemptIceRestart(peerId);
+          }, 3500)
+        );
       } else if (pc.iceConnectionState === "failed") {
-        toast.error("La red bloquea la conexión de audio. Se necesita un servidor TURN (VITE_TURN_URLS).");
-        try { (pc as any).restartIce?.(); } catch { /* navegador viejo */ }
+        clearReconnectTimer();
+        if (connectedOnce) {
+          toast.info("Conexión interrumpida; intentando recuperar la llamada...");
+          attemptIceRestart(peerId);
+          // Si en 12s no se recuperó, terminar limpio (nunca dejar la UI colgada)
+          reconnectTimersRef.current.set(
+            peerId,
+            window.setTimeout(() => {
+              if (!["connected", "completed"].includes(pc.iceConnectionState)) {
+                removePeer(peerId);
+                if (callScopeRef.current === peerId) {
+                  toast.error("No se pudo recuperar la llamada.");
+                  fullCleanup();
+                }
+              }
+            }, 12000)
+          );
+        } else {
+          toast.error("La red bloquea la conexión de audio. Se necesita un servidor TURN (VITE_TURN_URLS).");
+          try { (pc as any).restartIce?.(); } catch { /* navegador viejo */ }
+        }
       }
     };
     pc.onconnectionstatechange = () => {
       if (import.meta.env.DEV) console.log(`[rtc] ${peerId} conn: ${pc.connectionState}`);
-      // "disconnected" suele ser transitorio en redes móviles (cambio de
-      // antena, wifi inestable) y se recupera solo: NO terminar la llamada.
-      if (["failed", "closed"].includes(pc.connectionState)) {
+      // "disconnected"/"failed" se manejan arriba con ICE restart; solo
+      // "closed" es definitivo.
+      if (pc.connectionState === "closed") {
         removePeer(peerId);
         // En DM 1:1 la caída del peer termina la llamada
         if (callScopeRef.current === peerId) {
@@ -295,7 +470,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       }
     };
     return pc;
-  }, [socket, removePeer, fullCleanup]);
+  }, [socket, removePeer, fullCleanup, attemptIceRestart]);
 
   const flushPendingIce = useCallback(async (peerId: string) => {
     const pc = pcsRef.current.get(peerId);
@@ -403,6 +578,20 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
 
     const onOffer = async (payload: any) => {
       if (!payload?.from || !payload?.offer) return;
+
+      // Renegociación (ICE restart) de una llamada ya existente: responder
+      // en silencio, sin tocar el estado de la UI.
+      if (payload.restart && pcsRef.current.has(payload.from)) {
+        const pc = pcsRef.current.get(payload.from)!;
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit("call-answer", { to: payload.from, answer, channel: payload.channel || null, restart: true });
+          await flushPendingIce(payload.from);
+        } catch { /* peer cerrado a medio camino */ }
+        return;
+      }
 
       // Oferta de malla del lobby: auto-aceptar solo si estoy en el canal de voz
       if (payload.channel === "lobby") {
@@ -531,6 +720,56 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     };
   }, [socket, selfId, createPeer, flushPendingIce, fullCleanup, removePeer]);
 
+  // ---------- Calidad de llamada (getStats: RTT + pérdida de paquetes) ----------
+  useEffect(() => {
+    if (callState !== "active") return;
+    setCallQuality((q) => q ?? "good");
+    let prevLost = 0;
+    let prevReceived = 0;
+    const interval = window.setInterval(async () => {
+      const pc = pcsRef.current.values().next().value as RTCPeerConnection | undefined;
+      if (!pc || !["connected", "completed"].includes(pc.iceConnectionState)) return;
+      try {
+        const stats = await pc.getStats();
+        let rtt: number | null = null;
+        let lost = 0;
+        let received = 0;
+        stats.forEach((report) => {
+          if (report.type === "candidate-pair" && (report.nominated || report.selected) && report.state === "succeeded") {
+            if (typeof report.currentRoundTripTime === "number") rtt = Math.round(report.currentRoundTripTime * 1000);
+          }
+          if (report.type === "inbound-rtp" && !report.isRemote) {
+            lost += report.packetsLost || 0;
+            received += report.packetsReceived || 0;
+          }
+        });
+        const dLost = Math.max(0, lost - prevLost);
+        const dReceived = Math.max(0, received - prevReceived);
+        prevLost = lost;
+        prevReceived = received;
+        const lossRatio = dLost + dReceived > 0 ? dLost / (dLost + dReceived) : 0;
+        setCallRtt(rtt);
+        setCallQuality((q) => {
+          if (q === "reconnecting") return q;
+          if ((rtt !== null && rtt > 400) || lossRatio > 0.08) return "poor";
+          if ((rtt !== null && rtt > 180) || lossRatio > 0.03) return "fair";
+          return "good";
+        });
+      } catch { /* stats no disponibles */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [callState]);
+
+  // ---------- Lista de dispositivos (al entrar a llamada y al conectar hardware) ----------
+  useEffect(() => {
+    if (callState !== "active" && callState !== "outgoing") return;
+    refreshDevices();
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    md.addEventListener("devicechange", refreshDevices);
+    return () => md.removeEventListener("devicechange", refreshDevices);
+  }, [callState, refreshDevices]);
+
   // Colgar limpio al cerrar pestaña o desmontar
   useEffect(() => {
     const bye = () => {
@@ -557,6 +796,14 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     voiceMembers,
     muted,
     cameraOff,
+    mics,
+    cams,
+    speakers,
+    micId,
+    camId,
+    speakerId,
+    callQuality,
+    callRtt,
     startCall,
     acceptCall,
     rejectCall,
@@ -564,5 +811,9 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     joinVoice,
     toggleMute,
     toggleCamera,
+    setMic,
+    setCam,
+    setSpeaker,
+    cycleCamera,
   };
 }

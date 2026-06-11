@@ -16,7 +16,7 @@ function playWithGestureFallback(el: HTMLMediaElement) {
 
 /** Reproduce el audio de un stream remoto. Usa <audio> para evitar
  *  el bloqueo de autoplay que Safari aplica a <video display:none>. */
-function RemoteAudio({ stream }: { stream: MediaStream }) {
+function RemoteAudio({ stream, sinkId }: { stream: MediaStream; sinkId: string | null }) {
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -24,10 +24,17 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
     if (el.srcObject !== stream) el.srcObject = stream;
     return playWithGestureFallback(el);
   }, [stream]);
+  // Salida de audio seleccionable (setSinkId no existe en Safari/iOS)
+  useEffect(() => {
+    const el = ref.current as (HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (el && sinkId && typeof el.setSinkId === "function") {
+      el.setSinkId(sinkId).catch(() => {});
+    }
+  }, [sinkId]);
   return <audio ref={ref} autoPlay playsInline />;
 }
 import { AnimatePresence, motion } from "motion/react";
-import { Maximize2, Mic, MicOff, Minimize2, PhoneOff, Video as VideoIcon, VideoOff } from "lucide-react";
+import { Maximize2, Mic, MicOff, Minimize2, PhoneOff, Settings2, SignalHigh, SignalLow, SignalMedium, SwitchCamera, Video as VideoIcon, VideoOff } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import type { Participant } from "../../lib/chat";
 import type { WebRTCApi } from "../../hooks/useWebRTC";
@@ -170,6 +177,80 @@ function VideoTile({
   );
 }
 
+/** Indicador de calidad de la llamada (RTT + pérdida medidos por getStats). */
+function QualityBadge({ rtc }: { rtc: WebRTCApi }) {
+  if (!rtc.callQuality) return null;
+  const cfg =
+    rtc.callQuality === "good"
+      ? { Icon: SignalHigh, color: "text-emerald-400", label: "Buena conexión" }
+      : rtc.callQuality === "fair"
+        ? { Icon: SignalMedium, color: "text-yellow-400", label: "Conexión moderada" }
+        : rtc.callQuality === "poor"
+          ? { Icon: SignalLow, color: "text-red-400", label: "Conexión inestable" }
+          : { Icon: SignalLow, color: "text-yellow-400 animate-pulse", label: "Reconectando..." };
+  const { Icon } = cfg;
+  const title = rtc.callRtt !== null ? `${cfg.label} · ${rtc.callRtt} ms` : cfg.label;
+  return (
+    <span className="inline-flex items-center gap-1" title={title} role="status" aria-label={title}>
+      <Icon className={`size-4 ${cfg.color}`} />
+      {rtc.callQuality === "reconnecting" && <span className="text-[10px] text-yellow-300">Reconectando...</span>}
+    </span>
+  );
+}
+
+/** Panel de selección de dispositivos (mic / cámara / altavoz). */
+function DeviceSettings({ rtc, onClose }: { rtc: WebRTCApi; onClose: () => void }) {
+  const selectCls =
+    "w-full bg-white/10 border border-white/15 rounded-lg px-2.5 py-2 text-xs text-white outline-none [&>option]:text-black";
+  const canPickSpeaker =
+    typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype && rtc.speakers.length > 0;
+  return (
+    <>
+      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+        transition={{ type: "spring", stiffness: 380, damping: 26 }}
+        className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-20 w-72 max-w-[90vw] rounded-2xl bg-[#16142a]/97 border border-white/15 backdrop-blur shadow-2xl p-3 space-y-3"
+      >
+        <div className="text-white text-xs font-pixel-ui tracking-widest">DISPOSITIVOS</div>
+        <label className="block space-y-1">
+          <span className="text-[10px] text-white/60 tracking-wider">MICRÓFONO</span>
+          <select className={selectCls} value={rtc.micId || ""} onChange={(e) => e.target.value && rtc.setMic(e.target.value)}>
+            {rtc.mics.length === 0 && <option value="">Sin micrófonos</option>}
+            {rtc.mics.map((d, i) => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label || `Micrófono ${i + 1}`}</option>
+            ))}
+          </select>
+        </label>
+        {rtc.callKind === "video" && (
+          <label className="block space-y-1">
+            <span className="text-[10px] text-white/60 tracking-wider">CÁMARA</span>
+            <select className={selectCls} value={rtc.camId || ""} onChange={(e) => e.target.value && rtc.setCam(e.target.value)}>
+              {rtc.cams.length === 0 && <option value="">Sin cámaras</option>}
+              {rtc.cams.map((d, i) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `Cámara ${i + 1}`}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {canPickSpeaker && (
+          <label className="block space-y-1">
+            <span className="text-[10px] text-white/60 tracking-wider">ALTAVOZ</span>
+            <select className={selectCls} value={rtc.speakerId || ""} onChange={(e) => e.target.value && rtc.setSpeaker(e.target.value)}>
+              <option value="">Predeterminado</option>
+              {rtc.speakers.map((d, i) => (
+                <option key={d.deviceId} value={d.deviceId}>{d.label || `Altavoz ${i + 1}`}</option>
+              ))}
+            </select>
+          </label>
+        )}
+      </motion.div>
+    </>
+  );
+}
+
 function ControlBar({
   rtc,
   theme: t,
@@ -183,10 +264,11 @@ function ControlBar({
   onToggleExpand: () => void;
   compact?: boolean;
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const size = compact ? "size-9" : "size-12";
   const icon = compact ? "size-4" : "size-5";
   return (
-    <div className={`flex items-center justify-center ${compact ? "gap-1.5" : "gap-3"}`}>
+    <div className={`relative flex items-center justify-center ${compact ? "gap-1.5" : "gap-3"}`}>
       <motion.button
         whileTap={{ scale: 0.88 }}
         onClick={rtc.toggleMute}
@@ -194,6 +276,7 @@ function ControlBar({
           rtc.muted ? "bg-white text-black" : "bg-white/15 hover:bg-white/25 text-white"
         }`}
         aria-label={rtc.muted ? "Activar micrófono" : "Silenciar"}
+        aria-pressed={rtc.muted}
       >
         {rtc.muted ? <MicOff className={icon} /> : <Mic className={icon} />}
       </motion.button>
@@ -205,8 +288,32 @@ function ControlBar({
             rtc.cameraOff ? "bg-white text-black" : "bg-white/15 hover:bg-white/25 text-white"
           }`}
           aria-label={rtc.cameraOff ? "Encender cámara" : "Apagar cámara"}
+          aria-pressed={rtc.cameraOff}
         >
           {rtc.cameraOff ? <VideoOff className={icon} /> : <VideoIcon className={icon} />}
+        </motion.button>
+      )}
+      {rtc.callKind === "video" && rtc.cams.length > 1 && !compact && (
+        <motion.button
+          whileTap={{ scale: 0.88 }}
+          onClick={rtc.cycleCamera}
+          className={`${size} rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center shadow-lg`}
+          aria-label="Cambiar de cámara"
+        >
+          <SwitchCamera className={icon} />
+        </motion.button>
+      )}
+      {!compact && (
+        <motion.button
+          whileTap={{ scale: 0.88 }}
+          onClick={() => setSettingsOpen((o) => !o)}
+          className={`${size} rounded-full flex items-center justify-center shadow-lg transition-colors ${
+            settingsOpen ? "bg-white text-black" : "bg-white/15 hover:bg-white/25 text-white"
+          }`}
+          aria-label="Configurar dispositivos"
+          aria-expanded={settingsOpen}
+        >
+          <Settings2 className={icon} />
         </motion.button>
       )}
       <motion.button
@@ -226,6 +333,7 @@ function ControlBar({
       >
         <PhoneOff className={icon} />
       </motion.button>
+      <AnimatePresence>{settingsOpen && <DeviceSettings rtc={rtc} onClose={() => setSettingsOpen(false)} />}</AnimatePresence>
     </div>
   );
 }
@@ -242,8 +350,26 @@ export function CallOverlay({
   theme: ThemeTokens;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const activeSpeaker = useActiveSpeaker(rtc.remoteStreams);
+  // Incluir mi stream local en la detección de hablante activo
+  const allStreams = React.useMemo(
+    () => (rtc.localStream ? { ...rtc.remoteStreams, [selfId]: rtc.localStream } : rtc.remoteStreams),
+    [rtc.remoteStreams, rtc.localStream, selfId]
+  );
+  const activeSpeaker = useActiveSpeaker(allStreams);
   const inCall = rtc.callState === "active" || rtc.callState === "outgoing";
+
+  // Cronómetro de llamada
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (rtc.callState !== "active") {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const iv = window.setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [rtc.callState]);
+  const fmtElapsed = `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, "0")}`;
 
   // Las videollamadas abren en grande; las de voz, en PiP
   useEffect(() => {
@@ -258,7 +384,11 @@ export function CallOverlay({
   const peer = !isLobby && rtc.callScope ? participants[rtc.callScope] : null;
   const title = isLobby ? "Voz del Lobby" : peer?.name || "...";
   const callLabel =
-    rtc.callState === "outgoing" ? "Llamando..." : isLobby ? `${remoteEntries.length + 1} en el canal` : "En llamada";
+    rtc.callState === "outgoing"
+      ? "Llamando..."
+      : isLobby
+        ? `${remoteEntries.length + 1} en el canal · ${fmtElapsed}`
+        : `En llamada · ${fmtElapsed}`;
 
   const nameOf = (id: string) => participants[id]?.name || id;
 
@@ -269,7 +399,7 @@ export function CallOverlay({
           en elementos de video/audio con display:none. */}
       <div aria-hidden="true" style={{ position: "fixed", width: 0, height: 0, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
         {remoteEntries.map(([id, stream]) => (
-          <RemoteAudio key={`audio-${id}`} stream={stream} />
+          <RemoteAudio key={`audio-${id}`} stream={stream} sinkId={rtc.speakerId} />
         ))}
       </div>
 
@@ -287,8 +417,9 @@ export function CallOverlay({
             <div className="flex items-center justify-between px-4 py-3 text-white shrink-0">
               <div className="min-w-0">
                 <div className="font-display text-sm truncate">{title}</div>
-                <div className="text-[11px] text-white/50">{callLabel}</div>
+                <div className="text-[11px] text-white/50 tabular-nums">{callLabel}</div>
               </div>
+              <QualityBadge rtc={rtc} />
             </div>
 
             {/* Grid responsive: columna en móvil, 2 col con más feeds */}
@@ -327,7 +458,7 @@ export function CallOverlay({
                 muted
                 mirrored
                 small
-                isSpeaking={false}
+                isSpeaking={activeSpeaker === selfId && !rtc.muted}
               />
             </div>
 
@@ -395,8 +526,11 @@ export function CallOverlay({
                     )}
                   </div>
                   <div className="flex-1 min-w-0 text-white">
-                    <div className="text-xs truncate">{title}</div>
-                    <div className="text-[10px] text-white/50 truncate">{callLabel}</div>
+                    <div className="text-xs truncate flex items-center gap-1.5">
+                      {title}
+                      <QualityBadge rtc={rtc} />
+                    </div>
+                    <div className="text-[10px] text-white/50 truncate tabular-nums">{callLabel}</div>
                   </div>
                 </div>
               );
