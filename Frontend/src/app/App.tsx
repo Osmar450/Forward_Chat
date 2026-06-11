@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
-import { WifiOff } from "lucide-react";
+import { ImageDown, WifiOff } from "lucide-react";
 import { themes, Theme } from "./lib/themes";
 import {
   BOT_ID,
@@ -480,6 +480,51 @@ export default function App() {
     setPendingImage({ file, previewUrl, caption: "" });
   };
 
+  // ==========================================
+  // DRAG & DROP DE ARCHIVOS SOBRE EL CHAT
+  // El contador de profundidad evita parpadeos al pasar sobre hijos.
+  // ==========================================
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
+
+  const dragHasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types || []).includes("Files");
+
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!activeChatRef.current !== null || !dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    if (!activeChatRef.current !== null || !dragHasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    if (!activeChatRef.current !== null) return;
+    const files = Array.from(e.dataTransfer?.files || []);
+    const image = files.find((f) => f.type.startsWith("image/"));
+    if (image) {
+      // Vista previa local (ImagePreviewModal) antes de subir nada al backend
+      queueImage(image);
+    } else if (files.length > 0) {
+      toast.error("Ese tipo de archivo no se puede enviar; prueba con una imagen.");
+    }
+  };
+
   const confirmSendImage = async () => {
     if (!pendingImage) return;
     const caption = pendingImage.caption.trim() || undefined;
@@ -641,7 +686,13 @@ export default function App() {
     <MotionConfig reducedMotion={ecoMode ? "always" : "user"}>
     <div className={`size-full min-h-screen ${t.bg} ${t.text} flex items-center justify-center font-mono transition-colors duration-500`}>
       <Toaster position="top-center" expand={false} richColors />
-      <div className={`relative w-full max-w-md h-[100dvh] md:h-[90vh] md:rounded-2xl overflow-hidden flex flex-col ${t.border} border ${t.bg}`}>
+      <div
+        className={`relative w-full max-w-md h-[100dvh] md:h-[90vh] md:rounded-2xl overflow-hidden flex flex-col ${t.border} border ${t.bg}`}
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
         <Header
           theme={t}
           me={me}
@@ -675,6 +726,34 @@ export default function App() {
             });
           }}
         />
+
+        {/* Overlay de drag & drop: "suelta para enviar" */}
+        <AnimatePresence>
+          {dragActive && inChat && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none"
+              aria-hidden="true"
+            >
+              <div
+                className={`flex flex-col items-center gap-3 px-10 py-8 rounded-2xl border-2 border-dashed ${t.panel}`}
+                style={{ borderColor: t.accentHex }}
+              >
+                <motion.span
+                  animate={{ y: [0, 6, 0] }}
+                  transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <ImageDown className="size-10" style={{ color: t.accentHex }} />
+                </motion.span>
+                <span className={`font-pixel-ui tracking-widest text-sm ${t.text}`}>SUELTA PARA ENVIAR</span>
+                <span className={`text-xs ${t.textMuted}`}>Verás una vista previa antes de mandarlo</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Aviso de reconexión */}
         <AnimatePresence>
