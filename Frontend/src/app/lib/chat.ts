@@ -38,6 +38,10 @@ export type ReactionMap = Record<string, string[]>;
 
 export type Message = {
   id: string | number;
+  /** id local optimista; el eco del servidor lo trae para reconciliar */
+  clientId?: string | number;
+  /** true mientras espera confirmación del servidor (Optimistic UI) */
+  pending?: boolean;
   authorId: string;
   kind: MessageKind;
   text?: string;
@@ -144,6 +148,7 @@ export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | nul
   const ts = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
   return {
     id: data.msgId ?? `${ts}-${Math.random().toString(36).slice(2, 7)}`,
+    clientId: data.clientId ?? undefined,
     authorId: data.userId || data.id,
     kind: (isSticker ? "sticker" : hasImage ? "image" : data.audioUrl ? "audio" : "text") as MessageKind,
     text: isSticker || data.text === "sticker_file" ? undefined : (data.text || undefined),

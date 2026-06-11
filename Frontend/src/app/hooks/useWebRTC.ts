@@ -270,7 +270,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     };
     let connectedOnce = false;
     pc.oniceconnectionstatechange = () => {
-      console.log(`[rtc] ${peerId} ICE: ${pc.iceConnectionState}`);
+      if (import.meta.env.DEV) console.log(`[rtc] ${peerId} ICE: ${pc.iceConnectionState}`);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         if (!connectedOnce) {
           connectedOnce = true;
@@ -282,7 +282,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       }
     };
     pc.onconnectionstatechange = () => {
-      console.log(`[rtc] ${peerId} conn: ${pc.connectionState}`);
+      if (import.meta.env.DEV) console.log(`[rtc] ${peerId} conn: ${pc.connectionState}`);
       // "disconnected" suele ser transitorio en redes móviles (cambio de
       // antena, wifi inestable) y se recupera solo: NO terminar la llamada.
       if (["failed", "closed"].includes(pc.connectionState)) {

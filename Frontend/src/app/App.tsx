@@ -27,14 +27,15 @@ import { SideMenu } from "./components/layout/SideMenu";
 import { HomeScreen } from "./components/home/HomeScreen";
 import { MessageList } from "./components/chat/MessageList";
 import { Composer } from "./components/chat/Composer";
-import { ThemesModal } from "./components/modals/ThemesModal";
-import { ImagePreviewModal } from "./components/modals/ImagePreviewModal";
-import { MembersModal } from "./components/modals/MembersModal";
-import { FriendsModal } from "./components/modals/FriendsModal";
-import { ProfileViewModal } from "./components/modals/ProfileViewModal";
-import { ProfileEditModal } from "./components/modals/ProfileEditModal";
-import { CallOverlay } from "./components/call/CallOverlay";
-import { IncomingCallModal } from "./components/call/IncomingCallModal";
+// Lazy loading: modales y UI de llamadas salen del bundle inicial
+const ThemesModal = React.lazy(() => import("./components/modals/ThemesModal").then((m) => ({ default: m.ThemesModal })));
+const ImagePreviewModal = React.lazy(() => import("./components/modals/ImagePreviewModal").then((m) => ({ default: m.ImagePreviewModal })));
+const MembersModal = React.lazy(() => import("./components/modals/MembersModal").then((m) => ({ default: m.MembersModal })));
+const FriendsModal = React.lazy(() => import("./components/modals/FriendsModal").then((m) => ({ default: m.FriendsModal })));
+const ProfileViewModal = React.lazy(() => import("./components/modals/ProfileViewModal").then((m) => ({ default: m.ProfileViewModal })));
+const ProfileEditModal = React.lazy(() => import("./components/modals/ProfileEditModal").then((m) => ({ default: m.ProfileEditModal })));
+const CallOverlay = React.lazy(() => import("./components/call/CallOverlay").then((m) => ({ default: m.CallOverlay })));
+const IncomingCallModal = React.lazy(() => import("./components/call/IncomingCallModal").then((m) => ({ default: m.IncomingCallModal })));
 
 export default function App() {
   // ==========================================
@@ -177,7 +178,10 @@ export default function App() {
     setChats((prev) => {
       const list = prev[chatKey] || [];
       if (list.some((m) => m.id === msg.id)) return prev;
-      return { ...prev, [chatKey]: [...list, msg] };
+      // Optimistic UI: el eco del servidor reemplaza al mensaje local pendiente
+      const pendingIdx = msg.clientId != null ? list.findIndex((m) => m.id === msg.clientId) : -1;
+      const next = pendingIdx !== -1 ? list.map((m, i) => (i === pendingIdx ? msg : m)) : [...list, msg];
+      return { ...prev, [chatKey]: next };
     });
     if (msg.authorId === selfIdRef.current) {
       setReplyingTo(null);
@@ -653,8 +657,29 @@ export default function App() {
     const text = draft.trim();
     if (!text) return;
     const replyTo = buildReplyRef(replyingTo);
-    if (!emitMessage({ text, replyTo })) {
-      appendLocal({ authorId: selfId, kind: "text", text, replyTo });
+    const chatKey = activeChatRef.current || LOBBY;
+    // Optimistic UI: pintar de inmediato; el eco del servidor lo confirma vía clientId
+    const clientMsgId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const ts = Date.now();
+    setChats((prev) => ({
+      ...prev,
+      [chatKey]: [...(prev[chatKey] || []), { id: clientMsgId, authorId: selfId, kind: "text" as const, text, replyTo, time: fmtClock(ts), timestamp: ts, pending: true }],
+    }));
+    setReplyingTo(null);
+    if (emitMessage({ msgId: clientMsgId, text, replyTo })) {
+      // Rollback silencioso: si en 10s el servidor no confirmó, quitar la marca de pendiente
+      setTimeout(() => {
+        setChats((prev) => {
+          const list = prev[chatKey] || [];
+          if (!list.some((m) => m.id === clientMsgId && m.pending)) return prev;
+          return { ...prev, [chatKey]: list.map((m) => (m.id === clientMsgId ? { ...m, pending: false } : m)) };
+        });
+      }, 10000);
+    } else {
+      setChats((prev) => ({
+        ...prev,
+        [chatKey]: (prev[chatKey] || []).map((m) => (m.id === clientMsgId ? { ...m, pending: false } : m)),
+      }));
       toast.warning("Sin conexión: el mensaje solo es visible para ti.");
     }
     setDraft("");
@@ -1001,6 +1026,7 @@ export default function App() {
           onCopyFriendCode={copyFriendCode}
         />
 
+        <React.Suspense fallback={null}>
         <ThemesModal
           open={showThemes}
           theme={theme}
@@ -1071,6 +1097,7 @@ export default function App() {
         {/* ============ LLAMADAS (WebRTC) ============ */}
         <IncomingCallModal rtc={rtc} participants={participants} theme={t} />
         <CallOverlay rtc={rtc} participants={participants} selfId={selfId} theme={t} />
+        </React.Suspense>
       </div>
     </div>
     </MotionConfig>

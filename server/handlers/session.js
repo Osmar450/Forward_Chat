@@ -29,8 +29,15 @@ function register(io, socket) {
         broadcastPresence();
     };
 
+    // Solo IDs alfanuméricos: evita inyectar separadores de scope ("|"),
+    // rutas o ids reservados a través del localStorage del cliente.
+    const SAFE_USER_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
     socket.on('restore profile', (profile) => {
-        const userId = (typeof profile?.userId === 'string' && profile.userId.trim()) ? profile.userId.trim() : generateAnonymousId();
+        const requested = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+        const userId = (requested && SAFE_USER_ID.test(requested) && requested !== 'forwardbot' && requested !== 'lobby')
+            ? requested
+            : generateAnonymousId();
         const user = getOrCreateUser(userId);
 
         // El cliente puede traer datos más recientes guardados en localStorage
