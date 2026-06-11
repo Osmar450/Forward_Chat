@@ -1,14 +1,20 @@
-const { store, scheduleSave } = require('../store');
-const { getOrCreateUser, publicProfile, normalizeCode, areFriends } = require('../users');
+const { getOrCreateUser, publicProfile, normalizeCode, areFriends, addFriendship, removeFriendship, findUserByCode } = require('../users');
 const { isOnline } = require('../presence');
 const { emitToUser, sendFriendsList } = require('../realtime');
+const { makeSocketRateLimiter } = require('../security');
 
 // ==========================================
 // AMIGOS (Friend Token)
 // ==========================================
+// Anti fuerza bruta de Forward Tokens: pocos intentos por minuto y socket
+const addFriendLimiter = makeSocketRateLimiter({ windowMs: 60000, max: 8 });
+
 function register(io, socket) {
     socket.on('add friend', (payload) => {
         if (!socket.userId) return;
+        if (!addFriendLimiter(socket)) {
+            return socket.emit('friend error', { message: 'Demasiados intentos. Espera un minuto.' });
+        }
         const code = normalizeCode(payload?.code);
         if (!code) {
             return socket.emit('friend error', { message: 'Código inválido. El formato es FWD-XXXX-XXXX.' });
@@ -17,15 +23,14 @@ function register(io, socket) {
         if (me.friendCode === code) {
             return socket.emit('friend error', { message: 'Ese es tu propio código, broski. 😅' });
         }
-        const target = Object.values(store.users).find(u => u.friendCode === code);
+        const target = findUserByCode(code);
         if (!target) {
             return socket.emit('friend error', { message: 'No existe ningún usuario con ese código.' });
         }
         if (areFriends(socket.userId, target.userId)) {
             return socket.emit('friend error', { message: `${target.name} ya es tu amigo.` });
         }
-        store.friendships.push([socket.userId, target.userId]);
-        scheduleSave();
+        addFriendship(socket.userId, target.userId);
 
         socket.emit('friend added', { profile: publicProfile(target, isOnline(target.userId)) });
         emitToUser(target.userId, 'friend added', { profile: publicProfile(me, true) });
@@ -37,11 +42,7 @@ function register(io, socket) {
     socket.on('remove friend', (payload) => {
         if (!socket.userId || !payload?.userId) return;
         const other = payload.userId;
-        const before = store.friendships.length;
-        store.friendships = store.friendships.filter(([x, y]) =>
-            !((x === socket.userId && y === other) || (x === other && y === socket.userId)));
-        if (store.friendships.length !== before) {
-            scheduleSave();
+        if (removeFriendship(socket.userId, other)) {
             sendFriendsList(socket.userId);
             sendFriendsList(other);
         }

@@ -6,12 +6,38 @@ const { store, scheduleSave } = require('./store');
 // ==========================================
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin caracteres ambiguos (0/O, 1/I)
 
+// ==========================================
+// ÍNDICES EN MEMORIA (lookups O(1) sobre el store JSON)
+// - friendCodeIndex: código -> userId (evita escanear todos los usuarios)
+// - friendshipIndex: "a|b" ordenado -> true (evita escanear todas las amistades)
+// Se reconstruyen al cargar y se mantienen en cada mutación.
+// ==========================================
+const friendCodeIndex = new Map();
+const friendshipIndex = new Set();
+
+function rebuildIndexes() {
+    friendCodeIndex.clear();
+    friendshipIndex.clear();
+    for (const user of Object.values(store.users)) {
+        if (user.friendCode) friendCodeIndex.set(user.friendCode, user.userId);
+    }
+    for (const [a, b] of store.friendships) {
+        friendshipIndex.add([a, b].sort().join('|'));
+    }
+}
+rebuildIndexes();
+
+function findUserByCode(code) {
+    const userId = friendCodeIndex.get(code);
+    return userId ? store.users[userId] : null;
+}
+
 function generateFriendCode() {
     const block = () => Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
     let code;
     do {
         code = `FWD-${block()}-${block()}`;
-    } while (Object.values(store.users).some(u => u.friendCode === code));
+    } while (friendCodeIndex.has(code));
     return code;
 }
 
@@ -33,9 +59,10 @@ function sanitizeMedia(value) {
 
 function getOrCreateUser(userId) {
     if (!store.users[userId]) {
+        const friendCode = generateFriendCode();
         store.users[userId] = {
             userId,
-            friendCode: generateFriendCode(),
+            friendCode,
             name: userId,
             avatar: null,
             color: null,
@@ -45,6 +72,7 @@ function getOrCreateUser(userId) {
             status: 'online',
             createdAt: Date.now()
         };
+        friendCodeIndex.set(friendCode, userId);
         scheduleSave();
     }
     return store.users[userId];
@@ -95,7 +123,27 @@ const BOT_PROFILE = {
 const dmKey = (a, b) => [a, b].sort().join('|');
 
 function areFriends(a, b) {
-    return store.friendships.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+    return friendshipIndex.has(dmKey(a, b));
+}
+
+function addFriendship(a, b) {
+    if (areFriends(a, b)) return false;
+    store.friendships.push([a, b]);
+    friendshipIndex.add(dmKey(a, b));
+    scheduleSave();
+    return true;
+}
+
+function removeFriendship(a, b) {
+    const before = store.friendships.length;
+    store.friendships = store.friendships.filter(([x, y]) =>
+        !((x === a && y === b) || (x === b && y === a)));
+    friendshipIndex.delete(dmKey(a, b));
+    if (store.friendships.length !== before) {
+        scheduleSave();
+        return true;
+    }
+    return false;
 }
 
 function friendIdsOf(userId) {
@@ -111,9 +159,13 @@ module.exports = {
     getOrCreateUser,
     publicProfile,
     generateAnonymousId,
+    findUserByCode,
+    rebuildIndexes,
     BOT_ID,
     BOT_PROFILE,
     dmKey,
     areFriends,
+    addFriendship,
+    removeFriendship,
     friendIdsOf
 };

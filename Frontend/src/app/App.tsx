@@ -114,6 +114,8 @@ export default function App() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   // Divisor "mensajes nuevos" al abrir un chat con pendientes
   const [unreadMarker, setUnreadMarker] = useState<{ chat: string; id: string | number } | null>(null);
+  // Paginación por cursor: chatKey -> el servidor tiene mensajes más antiguos
+  const [historyMore, setHistoryMore] = useState<Record<string, boolean>>({});
 
   // Refs para handlers de socket (evitan closures obsoletos)
   const selfIdRef = useRef(selfId);
@@ -374,11 +376,37 @@ export default function App() {
         return parseServerMessage(data, resolveMediaUrl);
       });
       setChats((prev) => ({ ...prev, [payload.with]: formatted }));
+      setHistoryMore((prev) => ({ ...prev, [payload.with]: !!payload.hasMore }));
       // El servidor incluye las marcas de lectura del scope (para los checks)
       const peerRead = payload.reads?.[payload.with];
       if (typeof peerRead === "number") {
         setPeerReads((prev) => (prev[payload.with] >= peerRead ? prev : { ...prev, [payload.with]: peerRead }));
       }
+    });
+
+    // Paginación: el servidor avisa si hay historial más antiguo disponible
+    newSocket.on("history meta", (payload: any) => {
+      if (!payload?.with) return;
+      const chatKey = payload.with === "lobby" ? LOBBY : payload.with;
+      setHistoryMore((prev) => ({ ...prev, [chatKey]: !!payload.hasMore }));
+    });
+
+    // Página de mensajes anteriores (cursor): se antepone al historial local
+    newSocket.on("older messages", (payload: any) => {
+      if (!payload?.with || !Array.isArray(payload.messages)) return;
+      const chatKey = payload.with === "lobby" ? LOBBY : payload.with;
+      const older = payload.messages.map((data: any) => {
+        if (data.profile) upsertParticipant(data.profile);
+        return parseServerMessage(data, resolveMediaUrl);
+      });
+      setChats((prev) => {
+        const list = prev[chatKey] || [];
+        const existing = new Set(list.map((m) => m.id));
+        const fresh = older.filter((m: Message) => !existing.has(m.id));
+        if (fresh.length === 0) return prev;
+        return { ...prev, [chatKey]: [...fresh, ...list] };
+      });
+      setHistoryMore((prev) => ({ ...prev, [chatKey]: !!payload.hasMore }));
     });
 
     newSocket.on("message edited", (payload: any) => {
@@ -833,6 +861,17 @@ export default function App() {
     setDraft("");
   };
 
+  // Pedir al servidor la página anterior del historial (cursor = primer mensaje)
+  const requestOlderMessages = () => {
+    const chatKey = activeChatRef.current || LOBBY;
+    const first = (chatsRef.current[chatKey] || [])[0];
+    if (!socketRef.current || !isConnectedRef.current || !first) return;
+    socketRef.current.emit("get older messages", {
+      with: chatKey === LOBBY ? "lobby" : chatKey,
+      before: first.timestamp,
+    });
+  };
+
   // Acciones rápidas del bot: enviar la sugerencia tal cual
   const sendQuickSuggestion = (text: string) => {
     sendTextValue(text);
@@ -1186,6 +1225,8 @@ export default function App() {
               showReceipts={activeChat !== LOBBY && !activePeer?.isBot}
               searchActive={searchOpen && searchQuery.trim().length > 0}
               currentSearchId={currentSearchId}
+              serverHasMore={!!historyMore[activeChat!]}
+              onLoadOlder={requestOlderMessages}
               openMenuFor={openMenuFor}
               onTogglePicker={(id) => setOpenMenuFor((cur) => (cur === id ? null : id))}
               onClosePicker={() => setOpenMenuFor(null)}

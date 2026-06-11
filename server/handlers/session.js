@@ -3,7 +3,7 @@ const { getOrCreateUser, publicProfile, generateAnonymousId, sanitizeMedia, frie
 const { addUserSocket, removeUserSocket } = require('../presence');
 const { emitAll, emitToUser, broadcastPresence, sendFriendsList } = require('../realtime');
 const { voiceChannels, dmCallPeers, broadcastVoiceParticipants } = require('./calls');
-const { messageRateLimits } = require('./messages');
+const { messageRateLimits, HISTORY_PAGE_SIZE } = require('./messages');
 
 // ==========================================
 // SESIÓN: restaurar/crear perfil, presencia y desconexión
@@ -20,11 +20,14 @@ function register(io, socket) {
             friendCode: user.friendCode
         });
         socket.emit('bot profile', { ...BOT_PROFILE });
-        socket.emit('message history', store.lobby.map(m => ({
+        // Paginación: solo la última página del lobby; el resto va por cursor
+        const lobbyPage = store.lobby.slice(-HISTORY_PAGE_SIZE);
+        socket.emit('message history', lobbyPage.map(m => ({
             ...m,
             scope: 'lobby',
             timestamp: new Date(m.timestamp).toISOString()
         })));
+        socket.emit('history meta', { with: 'lobby', hasMore: store.lobby.length > lobbyPage.length });
         sendFriendsList(user.userId);
         broadcastPresence();
     };

@@ -73,6 +73,8 @@ export function MessageList({
   showReceipts,
   searchActive,
   currentSearchId,
+  serverHasMore,
+  onLoadOlder,
   openMenuFor,
   onTogglePicker,
   onClosePicker,
@@ -100,6 +102,9 @@ export function MessageList({
   showReceipts: boolean;
   searchActive: boolean;
   currentSearchId: string | number | null;
+  /** El servidor aún tiene historial más antiguo (paginación por cursor) */
+  serverHasMore: boolean;
+  onLoadOlder: () => void;
   openMenuFor: string | number | null;
   onTogglePicker: (id: string | number) => void;
   onClosePicker: () => void;
@@ -123,11 +128,31 @@ export function MessageList({
   const visible = messages.slice(Math.max(0, messages.length - effectiveCount));
   const hiddenCount = messages.length - visible.length;
 
+  // true mientras esperamos una página del servidor (cursor)
+  const pendingServerLoadRef = useRef(false);
+  const prevLenRef = useRef(messages.length);
+
   const loadOlder = () => {
     const el = scrollRef.current;
     prevHeightRef.current = el ? el.scrollHeight - el.scrollTop : null;
-    setVisibleCount((c) => c + PAGE_SIZE);
+    if (hiddenCount > 0) {
+      setVisibleCount((c) => c + PAGE_SIZE);
+    } else if (serverHasMore) {
+      pendingServerLoadRef.current = true;
+      onLoadOlder();
+    }
   };
+
+  // Al llegar la página del servidor, ampliar la ventana para que se vea
+  useLayoutEffect(() => {
+    const delta = messages.length - prevLenRef.current;
+    prevLenRef.current = messages.length;
+    if (pendingServerLoadRef.current && delta > 0) {
+      pendingServerLoadRef.current = false;
+      setVisibleCount((c) => c + delta);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   // Mantener la posición de lectura al cargar mensajes anteriores
   useLayoutEffect(() => {
@@ -168,14 +193,16 @@ export function MessageList({
           )
         ) : (
           <>
-            {hiddenCount > 0 && (
+            {(hiddenCount > 0 || serverHasMore) && (
               <div className="flex justify-center pb-1">
                 <button
                   onClick={loadOlder}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${t.iconBtn} ${t.textMuted}`}
                 >
                   <History className="size-3.5" />
-                  Ver {Math.min(hiddenCount, PAGE_SIZE)} mensajes anteriores
+                  {hiddenCount > 0
+                    ? `Ver ${Math.min(hiddenCount, PAGE_SIZE)} mensajes anteriores`
+                    : "Cargar historial anterior"}
                 </button>
               </div>
             )}

@@ -2,6 +2,7 @@ const { store, newMsgId, scheduleSave } = require('../store');
 const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID } = require('../users');
 const { emitToUser, storeAndEmit } = require('../realtime');
 const { respondAsBot } = require('../bot');
+const { logger } = require('../logger');
 
 // ==========================================
 // MENSAJES (lobby + DM) Y TYPING
@@ -9,6 +10,8 @@ const { respondAsBot } = require('../bot');
 const messageRateLimits = new Map();
 const RATE_LIMIT_WINDOW = 10000;
 const MAX_MESSAGES_PER_WINDOW = 12;
+// Tamaño de página del historial (carga inicial y cada "ver anteriores")
+const HISTORY_PAGE_SIZE = 100;
 
 function register(io, socket) {
     // ==========================================
@@ -75,7 +78,7 @@ function register(io, socket) {
             if (!prompt && isReplyToBot) prompt = 'Responde a mi último mensaje';
             if (!prompt) return;
             const replyContext = isReplyToBot ? (msg.replyTo.text || '') : null;
-            respondAsBot('lobby', prompt, user.name, replyContext).catch(e => console.error('Bot error:', e));
+            respondAsBot('lobby', prompt, user.name, replyContext).catch(e => logger.error('Bot error en lobby', { error: e }));
         }
     });
 
@@ -118,19 +121,49 @@ function register(io, socket) {
         storeAndEmit(scope, messageData);
 
         if (isBotDm && text.trim()) {
-            respondAsBot(scope, text.trim(), user.name, msg.replyTo?.text || null).catch(e => console.error('Bot DM error:', e));
+            respondAsBot(scope, text.trim(), user.name, msg.replyTo?.text || null).catch(e => logger.error('Bot error en DM', { error: e }));
         }
     });
 
     socket.on('get dm history', (payload) => {
         if (!socket.userId || !payload?.with) return;
         const scope = dmKey(socket.userId, payload.with);
-        const history = (store.dms[scope] || []).map(m => ({
+        const all = store.dms[scope] || [];
+        // Paginación: solo la última página; lo anterior se pide por cursor
+        const page = all.slice(-HISTORY_PAGE_SIZE);
+        const history = page.map(m => ({
             ...m,
             scope,
             timestamp: new Date(m.timestamp).toISOString()
         }));
-        socket.emit('dm history', { with: payload.with, scope, messages: history, reads: (store.reads && store.reads[scope]) || {} });
+        socket.emit('dm history', {
+            with: payload.with,
+            scope,
+            messages: history,
+            hasMore: all.length > page.length,
+            reads: (store.reads && store.reads[scope]) || {}
+        });
+    });
+
+    // ==========================================
+    // PAGINACIÓN POR CURSOR (mensajes anteriores a un timestamp)
+    // payload: { with: 'lobby' | peerId, before: epoch ms }
+    // ==========================================
+    socket.on('get older messages', (payload) => {
+        if (!socket.userId || !payload?.with) return;
+        const before = typeof payload.before === 'number' ? payload.before : Date.now();
+        const isLobby = payload.with === 'lobby';
+        const list = isLobby ? store.lobby : (store.dms[dmKey(socket.userId, payload.with)] || []);
+        const older = list.filter(m => m.timestamp < before);
+        const page = older.slice(-HISTORY_PAGE_SIZE);
+        socket.emit('older messages', {
+            with: payload.with,
+            messages: page.map(m => ({
+                ...m,
+                timestamp: new Date(m.timestamp).toISOString()
+            })),
+            hasMore: older.length > page.length
+        });
     });
 
     // ==========================================
@@ -149,4 +182,4 @@ function register(io, socket) {
     });
 }
 
-module.exports = { register, messageRateLimits };
+module.exports = { register, messageRateLimits, HISTORY_PAGE_SIZE };
