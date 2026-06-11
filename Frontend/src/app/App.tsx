@@ -118,7 +118,10 @@ export default function App() {
   replyingToRef.current = replyingTo;
   activeChatRef.current = activeChat;
 
-  const backendUrl = import.meta.env.DEV ? "http://localhost:3000" : (typeof window !== "undefined" ? window.location.origin : "/");
+  // En builds nativas (Capacitor/APK) el origin es capacitor://localhost, así
+  // que VITE_BACKEND_URL (el WebTunnel) tiene prioridad si está definido.
+  const backendUrl = (import.meta.env.VITE_BACKEND_URL as string | undefined)?.replace(/\/+$/, "")
+    || (import.meta.env.DEV ? "http://localhost:3000" : (typeof window !== "undefined" ? window.location.origin : "/"));
   const t = themes[theme];
 
   // ==========================================
@@ -709,6 +712,11 @@ export default function App() {
       <Toaster position="top-center" expand={false} richColors />
       <div
         className={`relative w-full max-w-md h-[100dvh] md:h-[90vh] md:rounded-2xl overflow-hidden flex flex-col ${t.border} border ${t.bg}`}
+        style={{
+          // Notch / cámara / barra de estado en móviles (Capacitor y PWA)
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
         onDragEnter={onDragEnter}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}

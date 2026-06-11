@@ -7,6 +7,7 @@ import {
   EDIT_WINDOW_MS,
   Message,
   Participant,
+  QUICK_EMOJIS,
   REACTIONS,
   Receipt,
   STATUSES,
@@ -81,6 +82,8 @@ function MessageBubbleInner({
   const longPressTimer = useRef<number | null>(null);
   const longPressedRef = useRef(false);
   const swipeStartXRef = useRef<number | null>(null);
+  const movedRef = useRef(false);
+  const interactiveTargetRef = useRef(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const SWIPE_TRIGGER = 56;
   const SWIPE_MAX = 80;
@@ -106,8 +109,11 @@ function MessageBubbleInner({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (msg.deleted) return;
+    // Los controles internos (links, audio, guardar sticker) manejan su propio tap
+    interactiveTargetRef.current = !!(e.target as HTMLElement).closest("button, a, [role='slider']");
+    movedRef.current = false;
     swipeStartXRef.current = e.clientX;
-    startLongPress();
+    if (!interactiveTargetRef.current) startLongPress();
   };
 
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -118,7 +124,10 @@ function MessageBubbleInner({
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (swipeStartXRef.current === null) return;
     const raw = e.clientX - swipeStartXRef.current;
-    if (Math.abs(raw) > 6) cancelLongPress();
+    if (Math.abs(raw) > 6) {
+      cancelLongPress();
+      movedRef.current = true;
+    }
     const directional = isMine ? Math.min(0, raw) : Math.max(0, raw);
     const clamped = Math.max(-SWIPE_MAX, Math.min(SWIPE_MAX, directional));
     setSwipeOffset(clamped);
@@ -132,7 +141,11 @@ function MessageBubbleInner({
 
   const handlePointerUp = () => {
     cancelLongPress();
+    // Tap simple sobre la burbuja (sin arrastre, sin long-press y fuera de
+    // controles internos) también abre el menú de reacciones
+    const wasTap = !longPressedRef.current && !movedRef.current && !interactiveTargetRef.current && Math.abs(swipeOffset) < 6;
     finishSwipe();
+    if (wasTap && !msg.deleted) onTogglePicker(msg.id);
   };
 
   const handlePointerLeave = () => {
@@ -486,10 +499,32 @@ function MessageBubbleInner({
                         whileHover={{ scale: 1.3, y: -3 }}
                         whileTap={{ scale: 0.85 }}
                         onClick={() => onReact(msg.id, rid)}
-                        className={`p-1.5 rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
+                        className={`size-9 max-md:size-11 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >
                         <Icon className={`size-5 ${r.color}`} />
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                {/* Emojis rápidos personalizados */}
+                <div className={`flex items-center gap-0.5 mt-1 pt-1 border-t ${t.border}`}>
+                  {QUICK_EMOJIS.map((char, i) => {
+                    const rid = `e:${char}`;
+                    const active = (msg.reactions?.[rid] || []).includes(selfId);
+                    return (
+                      <motion.button
+                        key={char}
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.08 + i * 0.025, type: "spring", stiffness: 400, damping: 18 }}
+                        whileHover={{ scale: 1.3, y: -3 }}
+                        whileTap={{ scale: 0.85 }}
+                        onClick={() => onReact(msg.id, rid)}
+                        className={`size-8 max-md:size-11 flex items-center justify-center rounded-full text-base max-md:text-lg leading-none ${active ? t.accentSoft : "hover:bg-white/10"}`}
+                        aria-label={`Reaccionar con ${char}`}
+                      >
+                        {char}
                       </motion.button>
                     );
                   })}
@@ -501,14 +536,14 @@ function MessageBubbleInner({
                       onReply(msg);
                       onClosePicker();
                     }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-xs`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-lg ${t.iconBtn} text-xs`}
                   >
                     <Reply className="size-3.5" /> Responder
                   </button>
                   {canEdit && (
                     <button
                       onClick={() => onEdit(msg)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-xs`}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-lg ${t.iconBtn} text-xs`}
                     >
                       <Pencil className="size-3.5" /> Editar
                     </button>
@@ -516,7 +551,7 @@ function MessageBubbleInner({
                   {canDelete && (
                     <button
                       onClick={() => onDelete(msg.id)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-lg ${t.iconBtn} text-red-400 text-xs`}
                     >
                       <Trash2 className="size-3.5" /> Eliminar
                     </button>

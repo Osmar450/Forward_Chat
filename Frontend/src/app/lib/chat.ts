@@ -83,6 +83,9 @@ export const BANNER_COLORS = [
   "#ef4444", "#3b82f6", "#1e293b", "#831843", "#14532d",
 ];
 
+/** Reacciones de emoji rápidas del selector (long-press / tap en burbuja). */
+export const QUICK_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🙏", "😡"];
+
 export const AUDIO_MIME_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
 
 export const STATUSES: Record<Status, { label: string; color: string; bg: string; icon: React.ComponentType<{ className?: string; fill?: string }> }> = {
