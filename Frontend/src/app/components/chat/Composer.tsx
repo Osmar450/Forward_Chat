@@ -42,9 +42,11 @@ export function Composer({
   onToggleFavoriteSticker,
   onUploadSticker,
   recording,
+  recordingPaused,
   recordSeconds,
   onStartRecording,
   onStopRecording,
+  onToggleRecordingPause,
   onPickImage,
   mentionSearch,
   filteredMentions,
@@ -84,9 +86,11 @@ export function Composer({
   onToggleFavoriteSticker: (url: string) => void;
   onUploadSticker: (file: File) => void;
   recording: boolean;
+  recordingPaused: boolean;
   recordSeconds: number;
   onStartRecording: () => void;
   onStopRecording: (cancel: boolean) => void;
+  onToggleRecordingPause: () => void;
   onPickImage: (file: File) => void;
   mentionSearch: string | null;
   filteredMentions: Participant[];
@@ -285,6 +289,8 @@ export function Composer({
           <RecorderBar
             theme={t}
             seconds={recordSeconds}
+            paused={recordingPaused}
+            onTogglePause={onToggleRecordingPause}
             onCancel={() => onStopRecording(true)}
             onSend={() => onStopRecording(false)}
           />

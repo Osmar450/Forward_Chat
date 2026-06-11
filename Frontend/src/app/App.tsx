@@ -557,8 +557,8 @@ export default function App() {
     appendLocal({ authorId: selfId, kind: "image", imageUrl: previewUrl, text: caption, replyTo });
   };
 
-  // Grabación de notas de voz
-  const { recording, recordSeconds, startRecording, stopRecording } = useAudioRecorder(
+  // Grabación de notas de voz (con pausa/reanudación nativa de MediaRecorder)
+  const { recording, paused: recordingPaused, recordSeconds, startRecording, stopRecording, togglePause: toggleRecordingPause } = useAudioRecorder(
     async (file, duration, localUrl) => {
       const replyTo = buildReplyRef(replyingToRef.current);
       if (isConnected) {
@@ -893,9 +893,11 @@ export default function App() {
               onToggleFavoriteSticker={toggleFavoriteSticker}
               onUploadSticker={handleStickerFile}
               recording={recording}
+              recordingPaused={recordingPaused}
               recordSeconds={recordSeconds}
               onStartRecording={startRecording}
               onStopRecording={stopRecording}
+              onToggleRecordingPause={toggleRecordingPause}
               onPickImage={queueImage}
               mentionSearch={mentionSearch}
               filteredMentions={filteredMentions}
