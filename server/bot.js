@@ -6,6 +6,7 @@ const { BOT_ID, BOT_PROFILE } = require('./users');
 const { userSockets } = require('./presence');
 const { emitToScope, storeAndEmit } = require('./realtime');
 const { uploadsDir } = require('./uploads');
+const { logger } = require('./logger');
 
 // ==========================================
 // CONFIGURACIÓN DE GEMINI / FORWARDBOT
@@ -120,14 +121,14 @@ async function generateBotText(contextPrompt, onChunk) {
             lastError = new Error('respuesta vacía');
         } catch (error) {
             lastError = error;
-            console.warn(`⚠️ ${candidate.name} falló: ${error.message}`);
+            logger.warn(`Modelo ${candidate.name} falló`, { error });
             if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
                 handleRateLimit();
                 return { text: '¡Uy broski! Me estás hablando muy rápido y mis servidores se saturaron. Dame chance 30 segundos y vuelvo a estar listo. ⏳', model: 'error' };
             }
         }
     }
-    console.error('❌ Todos los modelos fallaron:', lastError?.message);
+    logger.error('Todos los modelos de IA fallaron', { error: lastError });
     return { text: '¡Uy wey! Mis circuitos están fritos ahorita y no pude procesar tu solicitud. Dame chance un minuto. 🔌', model: 'error' };
 }
 
@@ -142,7 +143,7 @@ async function generateBotImage(imagePrompt) {
     });
     if (!response.ok) {
         const errorDetails = await response.json().catch(() => ({}));
-        console.error('❌ Google API Error Details:', JSON.stringify(errorDetails, null, 2));
+        logger.error('Google API rechazó la generación de imagen', { context: errorDetails });
         throw new Error(`API rechazó la petición: ${response.statusText}`);
     }
     const data = await response.json();
@@ -184,7 +185,7 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
                 const imageUrl = await generateBotImage(imageMatch[1]);
                 storeAndEmit(scope, buildBotMessage('¡Ya rugiste papu! Aquí tienes tu imagen: 🎨🔥', [imageUrl]));
             } catch (error) {
-                console.error('❌ Error generando imagen:', error.message);
+                logger.error('Error generando imagen del bot', { error });
                 storeAndEmit(scope, buildBotMessage(`¡Uy broski! No pude pintar eso. El servidor dijo: "${error.message.substring(0, 50)}". Intenta pedirme otra cosa. 😩`));
             }
             return;

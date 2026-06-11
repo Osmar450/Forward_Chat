@@ -13,16 +13,24 @@ const { saveNow, startRetentionCleanup } = require('./server/store');
 const realtime = require('./server/realtime');
 const { registerUploadRoutes, startUploadsCleanup, uploadsDir } = require('./server/uploads');
 const { logBotConfig } = require('./server/bot');
+const { securityHeaders } = require('./server/security');
+const { logger } = require('./server/logger');
 const sessionHandlers = require('./server/handlers/session');
 const friendHandlers = require('./server/handlers/friends');
 const messageHandlers = require('./server/handlers/messages');
 const reactionHandlers = require('./server/handlers/reactions');
 const callHandlers = require('./server/handlers/calls');
 
+// Telemetría de proceso: rechazos y excepciones siempre quedan registrados
+logger.registerProcessHandlers();
+
 // ==========================================
 // EXPRESS + SOCKET.IO
 // ==========================================
 const app = express();
+app.set('trust proxy', 1); // IP real del cliente detrás de nginx/balanceador
+app.disable('x-powered-by');
+app.use(securityHeaders);
 app.use(cors()); // Permitir conexiones desde Vite
 
 const server = http.createServer(app);
@@ -33,6 +41,11 @@ const io = new Server(server, {
 realtime.init(io);
 
 logBotConfig();
+
+// Healthcheck para Docker/orquestadores
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+});
 
 // Archivos estáticos y uploads
 app.use(express.static(path.join(__dirname, 'Frontend', 'dist')));
@@ -63,9 +76,12 @@ app.get(/^\/(?!uploads|assets|upload).*/, (req, res, next) => {
     next();
 });
 
+// Error handler centralizado: log estructurado, sin stack traces al cliente
+app.use(logger.expressErrorHandler());
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    logger.info(`Servidor corriendo en http://localhost:${PORT}`, { port: Number(PORT) });
 });
 
 // Guardar datos al cerrar

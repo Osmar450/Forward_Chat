@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const { logger } = require('./logger');
 
 // ==========================================
 // UPLOADS (imágenes y audios del chat)
@@ -74,7 +75,7 @@ function startUploadsCleanup() {
                 }
             });
         } catch (error) {
-            console.error('Error limpiando imágenes antiguas:', error);
+            logger.error('Error limpiando imágenes antiguas', { error });
         }
     }, 6 * 60 * 60 * 1000);
 }

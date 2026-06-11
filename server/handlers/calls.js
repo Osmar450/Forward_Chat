@@ -2,11 +2,14 @@ const { store } = require('../store');
 const { areFriends, dmKey, BOT_ID } = require('../users');
 const { isOnline } = require('../presence');
 const { emitAll, emitToUser } = require('../realtime');
+const { makeSocketRateLimiter } = require('../security');
 
 // ==========================================
 // LLAMADAS WebRTC — SEÑALIZACIÓN
 // El servidor solo retransmite; el audio/video viaja P2P.
 // ==========================================
+// Señalización protegida: nadie puede spamear ofertas de llamada
+const callOfferLimiter = makeSocketRateLimiter({ windowMs: 60000, max: 15 });
 const voiceChannels = { lobby: new Map() }; // canal -> Map<userId, { video }>
 const dmCallPeers = new Map();              // userId -> Set<peerUserId> (para limpiar en disconnect)
 
@@ -43,6 +46,10 @@ function register(io, socket) {
 
     socket.on('call-offer', (payload) => {
         if (!socket.userId || !payload?.to) return;
+        // Las renegociaciones (ICE restart) no cuentan contra el límite
+        if (!payload.restart && !callOfferLimiter(socket)) {
+            return socket.emit('error toast', { message: 'Demasiadas llamadas seguidas. Espera un momento.' });
+        }
         // El bot no recibe llamadas
         if (payload.to === BOT_ID) return;
         const targetName = store.users[payload.to]?.name || payload.to;
