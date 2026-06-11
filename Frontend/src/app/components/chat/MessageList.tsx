@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronsDown, History, KeyRound, MessagesSquare } from "lucide-react";
+import { ChevronsDown, KeyRound, Loader2, MessagesSquare } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import {
   GROUP_GAP_MS,
@@ -140,8 +140,46 @@ export function MessageList({
     } else if (serverHasMore) {
       pendingServerLoadRef.current = true;
       onLoadOlder();
+      // Red de seguridad: si la página por cursor nunca llega, desbloquear
+      window.setTimeout(() => {
+        pendingServerLoadRef.current = false;
+      }, 6000);
     }
   };
+
+  // ==========================================
+  // PAGINACIÓN POR CURSOR CON INTERSECTION OBSERVER
+  // El sentinel del tope dispara la carga de mensajes anteriores sin que el
+  // usuario pulse nada; la restauración de scroll evita el "snap" al tope.
+  // ==========================================
+  const topSentinelRef = useRef<HTMLDivElement | null>(null);
+  const lastAutoLoadRef = useRef(0);
+  const loadOlderRef = useRef(loadOlder);
+  loadOlderRef.current = loadOlder;
+  const canLoadOlder = hiddenCount > 0 || serverHasMore;
+  const canLoadOlderRef = useRef(canLoadOlder);
+  canLoadOlderRef.current = canLoadOlder;
+  const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    const target = topSentinelRef.current;
+    if (!root || !target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (!canLoadOlderRef.current || pendingServerLoadRef.current) return;
+        const now = Date.now();
+        if (now - lastAutoLoadRef.current < 400) return;
+        lastAutoLoadRef.current = now;
+        loadOlderRef.current();
+      },
+      { root, rootMargin: "150px 0px 0px 0px" }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChat, hasMessages, canLoadOlder]);
 
   // Al llegar la página del servidor, ampliar la ventana para que se vea
   useLayoutEffect(() => {
@@ -193,16 +231,15 @@ export function MessageList({
           )
         ) : (
           <>
-            {(hiddenCount > 0 || serverHasMore) && (
-              <div className="flex justify-center pb-1">
+            {canLoadOlder && (
+              <div ref={topSentinelRef} className="flex justify-center pb-1">
                 <button
                   onClick={loadOlder}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${t.iconBtn} ${t.textMuted}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-pixel-ui tracking-widest ${t.iconBtn} ${t.textMuted}`}
+                  aria-label="Cargar mensajes anteriores"
                 >
-                  <History className="size-3.5" />
-                  {hiddenCount > 0
-                    ? `Ver ${Math.min(hiddenCount, PAGE_SIZE)} mensajes anteriores`
-                    : "Cargar historial anterior"}
+                  <Loader2 className="size-3.5 animate-spin" />
+                  CARGANDO HISTORIAL...
                 </button>
               </div>
             )}
