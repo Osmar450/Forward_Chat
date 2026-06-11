@@ -23,7 +23,7 @@ function securityHeaders(req, res, next) {
             "script-src 'self'",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com data:",
-            "img-src 'self' data: blob:",
+            "img-src 'self' data: blob: https:", // https: para imágenes de link previews
             "media-src 'self' blob:",
             "connect-src 'self' ws: wss: https://fonts.googleapis.com https://fonts.gstatic.com",
             "worker-src 'self'",

@@ -1,8 +1,9 @@
 const { store, newMsgId, scheduleSave } = require('../store');
 const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID } = require('../users');
-const { emitToUser, storeAndEmit } = require('../realtime');
+const { emitToUser, emitToScope, storeAndEmit } = require('../realtime');
 const { respondAsBot } = require('../bot');
 const { logger } = require('../logger');
+const { fetchLinkPreview, extractFirstUrl } = require('../linkPreview');
 
 // ==========================================
 // MENSAJES (lobby + DM) Y TYPING
@@ -12,6 +13,21 @@ const RATE_LIMIT_WINDOW = 10000;
 const MAX_MESSAGES_PER_WINDOW = 12;
 // Tamaño de página del historial (carga inicial y cada "ver anteriores")
 const HISTORY_PAGE_SIZE = 100;
+
+/**
+ * Rich link previews: si el texto trae una URL, obtener metadatos OpenGraph
+ * en segundo plano y avisar al scope cuando estén listos. Nunca bloquea el envío.
+ */
+function attachLinkPreview(scope, message) {
+    const url = extractFirstUrl(message.text);
+    if (!url) return;
+    fetchLinkPreview(url).then((preview) => {
+        if (!preview) return;
+        message.linkPreview = preview;
+        scheduleSave();
+        emitToScope(scope, 'link preview', { scope, msgId: message.msgId, preview });
+    }).catch((e) => logger.warn('attachLinkPreview falló', { error: e }));
+}
 
 function register(io, socket) {
     // ==========================================
@@ -24,7 +40,7 @@ function register(io, socket) {
         const typing = !!payload?.typing;
         const scope = payload?.scope;
         if (scope === 'lobby') {
-            socket.broadcast.emit('typing', { scope: 'lobby', userId: socket.userId, name, typing });
+            socket.to('lobby').emit('typing', { scope: 'lobby', userId: socket.userId, name, typing });
         } else if (typeof scope === 'string' && scope) {
             // scope = userId del destinatario; el receptor lo ve con el scope del emisor
             emitToUser(scope, 'typing', { scope: socket.userId, userId: socket.userId, name, typing });
@@ -70,6 +86,7 @@ function register(io, socket) {
         };
 
         storeAndEmit('lobby', messageData);
+        attachLinkPreview('lobby', messageData);
 
         // El bot responde si lo mencionan o si responden a uno de sus mensajes
         const isReplyToBot = msg.replyTo && (msg.replyTo.userId === BOT_ID || msg.replyTo.authorId === BOT_ID);
@@ -119,6 +136,7 @@ function register(io, socket) {
         };
 
         storeAndEmit(scope, messageData);
+        attachLinkPreview(scope, messageData);
 
         if (isBotDm && text.trim()) {
             respondAsBot(scope, text.trim(), user.name, msg.replyTo?.text || null).catch(e => logger.error('Bot error en DM', { error: e }));

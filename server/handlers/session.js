@@ -13,6 +13,7 @@ function register(io, socket) {
         socket.userId = user.userId;
         addUserSocket(user.userId, socket.id);
         socket.join(`u:${user.userId}`);
+        socket.join('lobby'); // room explícito del canal público
 
         socket.emit('session profile', {
             ...publicProfile(user, true),

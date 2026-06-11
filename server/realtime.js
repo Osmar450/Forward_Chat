@@ -45,14 +45,16 @@ function findMessage(scope, msgId) {
 }
 
 function scopeRecipients(scope) {
-    if (scope === 'lobby') return null; // broadcast
+    if (scope === 'lobby') return null; // room del lobby
     return scope.split('|');
 }
 
+// Emisión estricta por rooms: el lobby es un room explícito ("lobby") al que
+// cada socket se une al iniciar sesión; los DMs usan los rooms u:<userId>.
 function emitToScope(scope, event, payload) {
     const recipients = scopeRecipients(scope);
     if (!recipients) {
-        io.emit(event, payload);
+        io.to('lobby').emit(event, payload);
     } else {
         recipients.forEach(uid => emitToUser(uid, event, payload));
     }
