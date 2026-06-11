@@ -2,7 +2,7 @@ import React from "react";
 import { motion } from "motion/react";
 import { Bot, Hash, KeyRound, Sparkles, UserPlus } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
-import { BOT_ID, LOBBY, Message, Participant, colorForUser, messagePreview } from "../../lib/chat";
+import { BOT_ID, LOBBY, Message, Participant, colorForUser, fmtSmartTime, messagePreview } from "../../lib/chat";
 import { StatusDot } from "../chat/MessageBubble";
 
 function ChatListItem({
@@ -138,7 +138,7 @@ export function HomeScreen({
                   ? "Tu asistente personal de IA"
                   : p?.bio || "Inicia la conversación"
             }
-            meta={last ? <span className={`text-[10px] ${t.textMuted}`}>{last.time}</span> : null}
+            meta={last ? <span className={`text-[10px] ${t.textMuted}`}>{fmtSmartTime(last.timestamp)}</span> : null}
             unread={unread[peerId] || 0}
             onClick={() => onOpenChat(peerId)}
           />

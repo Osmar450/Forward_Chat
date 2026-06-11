@@ -52,9 +52,16 @@ export type Message = {
   time: string;
   timestamp: number;
   deleted?: boolean;
+  /** El autor editó el texto después de enviarlo */
+  edited?: boolean;
+  /** Respuesta del bot llegando en vivo (fragmentos por socket) */
+  streaming?: boolean;
   reactions?: ReactionMap;
   isBot?: boolean;
 };
+
+/** Estado de entrega de un mensaje propio en un DM. */
+export type Receipt = "pending" | "sent" | "read";
 
 export const USER_COLORS = [
   "#7c5cff", "#ec4899", "#22d3ee", "#f59e0b", "#10b981",
@@ -110,6 +117,46 @@ export const fmtTime = (sec: number) => {
 export const fmtClock = (ts?: number | string) =>
   (ts ? new Date(ts) : new Date()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
+// ==========================================
+// FECHAS INTELIGENTES (separadores y lista de chats)
+// ==========================================
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Mensajes consecutivos del mismo autor dentro de esta ventana se agrupan. */
+export const GROUP_GAP_MS = 5 * 60 * 1000;
+
+export const startOfDay = (ts: number) => {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+export const isSameDay = (a: number, b: number) => startOfDay(a) === startOfDay(b);
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Etiqueta de separador de día: "Hoy", "Ayer", "Lunes", "12 mar 2025". */
+export const fmtDayLabel = (ts: number) => {
+  const today = startOfDay(Date.now());
+  const day = startOfDay(ts);
+  if (day === today) return "Hoy";
+  if (day === today - DAY_MS) return "Ayer";
+  const d = new Date(ts);
+  if (today - day < 7 * DAY_MS) return capitalize(d.toLocaleDateString("es", { weekday: "long" }));
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString("es", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+};
+
+/** Hora compacta para la lista de chats: "3:24 pm", "Ayer", "Lun", "04/02". */
+export const fmtSmartTime = (ts: number) => {
+  const today = startOfDay(Date.now());
+  const day = startOfDay(ts);
+  if (day === today) return fmtClock(ts);
+  if (day === today - DAY_MS) return "Ayer";
+  if (today - day < 7 * DAY_MS) return capitalize(new Date(ts).toLocaleDateString("es", { weekday: "short" }));
+  return new Date(ts).toLocaleDateString("es", { day: "2-digit", month: "2-digit" });
+};
+
 export const pickRecorderMimeType = () => {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
   return AUDIO_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
@@ -159,6 +206,7 @@ export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | nul
     time: fmtClock(ts),
     timestamp: ts,
     deleted: !!data.deleted,
+    edited: !!data.edited,
     reactions: data.reactions && typeof data.reactions === "object" ? data.reactions : undefined,
     isBot: data.isBot || data.userId === "forwardbot",
   };

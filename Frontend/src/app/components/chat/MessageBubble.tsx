@@ -1,12 +1,13 @@
 import React, { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Ban, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
+import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
 import {
   Message,
   Participant,
   REACTIONS,
+  Receipt,
   STATUSES,
   Status,
   messagePreview,
@@ -24,13 +25,22 @@ export function StatusDot({ status, theme: t, size = "default" }: { status: Stat
   );
 }
 
-export function MessageBubble({
+/** Checks de entrega/lectura para mensajes propios en DMs. */
+function ReceiptIcon({ receipt, mine, theme: t }: { receipt: Receipt; mine: boolean; theme: ThemeTokens }) {
+  if (receipt === "pending") return <Clock3 className={`size-3 ${mine ? "text-white/60" : t.textMuted}`} aria-label="Enviando" />;
+  if (receipt === "read") return <CheckCheck className="size-3.5 text-sky-300" aria-label="Leído" />;
+  return <Check className={`size-3.5 ${mine ? "text-white/60" : t.textMuted}`} aria-label="Enviado" />;
+}
+
+function MessageBubbleInner({
   msg,
   author,
   isMine,
   showAuthor,
   theme: t,
   selfId,
+  receipt,
+  isSearchCurrent,
   pickerOpen,
   pickerBelow,
   onTogglePicker,
@@ -38,6 +48,7 @@ export function MessageBubble({
   onDelete,
   onReact,
   onReply,
+  onEdit,
   onAvatarClick,
   onSaveSticker,
   formatText,
@@ -48,14 +59,17 @@ export function MessageBubble({
   showAuthor: boolean;
   theme: ThemeTokens;
   selfId: string;
+  receipt: Receipt | null;
+  isSearchCurrent: boolean;
   pickerOpen: boolean;
   pickerBelow?: boolean;
-  onTogglePicker: () => void;
+  onTogglePicker: (id: string | number) => void;
   onClosePicker: () => void;
-  onDelete: () => void;
-  onReact: (reactionId: string) => void;
-  onReply: () => void;
-  onAvatarClick: () => void;
+  onDelete: (id: string | number) => void;
+  onReact: (id: string | number, reactionId: string) => void;
+  onReply: (msg: Message) => void;
+  onEdit: (msg: Message) => void;
+  onAvatarClick: (authorId: string) => void;
   onSaveSticker: (url: string) => void;
   formatText: (text?: string) => React.ReactNode;
 }) {
@@ -66,11 +80,13 @@ export function MessageBubble({
   const SWIPE_TRIGGER = 56;
   const SWIPE_MAX = 80;
 
+  const canEdit = isMine && !msg.deleted && msg.kind === "text";
+
   const startLongPress = () => {
     longPressedRef.current = false;
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
-      onTogglePicker();
+      onTogglePicker(msg.id);
     }, 400);
   };
   const cancelLongPress = () => {
@@ -88,7 +104,7 @@ export function MessageBubble({
 
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!msg.deleted) onReply();
+    if (!msg.deleted) onReply(msg);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -101,7 +117,7 @@ export function MessageBubble({
   };
 
   const finishSwipe = () => {
-    if (!msg.deleted && Math.abs(swipeOffset) >= SWIPE_TRIGGER) onReply();
+    if (!msg.deleted && Math.abs(swipeOffset) >= SWIPE_TRIGGER) onReply(msg);
     swipeStartXRef.current = null;
     setSwipeOffset(0);
   };
@@ -119,6 +135,24 @@ export function MessageBubble({
 
   const reactionEntries = Object.entries(msg.reactions || {}).filter(([, users]) => users.length > 0);
 
+  /** Hora + "editado" + checks de lectura, compartido entre tipos de mensaje. */
+  const metaRow = (extraClass = "") => (
+    <span className={`inline-flex items-center gap-1 ${extraClass}`}>
+      {msg.edited && (
+        <span className={`font-pixel italic ${isMine ? "text-white/55" : t.textMuted}`} style={{ fontSize: "10px" }}>
+          editado
+        </span>
+      )}
+      <span
+        className={`font-pixel whitespace-nowrap opacity-80 ${isMine ? "text-white/70" : t.textMuted}`}
+        style={{ fontSize: "11px", lineHeight: "1.4" }}
+      >
+        {msg.time}
+      </span>
+      {receipt && <ReceiptIcon receipt={receipt} mine={isMine} theme={t} />}
+    </span>
+  );
+
   return (
     <motion.div
       layout
@@ -126,13 +160,14 @@ export function MessageBubble({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      data-msgid={msg.id}
       className={`flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
     >
       {!isMine && (
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.92 }}
-          onClick={onAvatarClick}
+          onClick={() => onAvatarClick(author.id)}
           className="relative size-8 rounded-full flex items-center justify-center shrink-0 text-white overflow-hidden font-pixel-ui text-sm shadow-md"
           style={{ backgroundColor: author.color }}
           aria-label={`Ver perfil de ${author.name}`}
@@ -143,18 +178,30 @@ export function MessageBubble({
       )}
 
       {isMine && !msg.deleted && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.6, x: 8 }}
-          animate={{ opacity: 1, scale: 1, x: 0 }}
-          whileHover={{ scale: 1.15, rotate: -10 }}
-          whileTap={{ scale: 0.85, rotate: 15 }}
-          transition={{ type: "spring", stiffness: 400, damping: 18 }}
-          onClick={onDelete}
-          className={`p-2 rounded-full ${t.iconBtn} text-red-400 self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden`}
-          aria-label="Eliminar mensaje"
-        >
-          <Trash2 className="size-4" />
-        </motion.button>
+        <span className="flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden">
+          {canEdit && (
+            <motion.button
+              whileHover={{ scale: 1.15 }}
+              whileTap={{ scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 400, damping: 18 }}
+              onClick={() => onEdit(msg)}
+              className={`p-2 rounded-full ${t.iconBtn} ${t.textMuted}`}
+              aria-label="Editar mensaje"
+            >
+              <Pencil className="size-4" />
+            </motion.button>
+          )}
+          <motion.button
+            whileHover={{ scale: 1.15, rotate: -10 }}
+            whileTap={{ scale: 0.85, rotate: 15 }}
+            transition={{ type: "spring", stiffness: 400, damping: 18 }}
+            onClick={() => onDelete(msg.id)}
+            className={`p-2 rounded-full ${t.iconBtn} text-red-400`}
+            aria-label="Eliminar mensaje"
+          >
+            <Trash2 className="size-4" />
+          </motion.button>
+        </span>
       )}
 
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
@@ -178,7 +225,7 @@ export function MessageBubble({
               whileHover={{ scale: 1.2, rotate: -8 }}
               whileTap={{ scale: 0.85, rotate: 12 }}
               transition={{ type: "spring", stiffness: 400, damping: 18 }}
-              onClick={onTogglePicker}
+              onClick={() => onTogglePicker(msg.id)}
               className={`p-1.5 rounded-full ${t.iconBtn} self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden`}
               aria-label="Reaccionar"
             >
@@ -199,9 +246,9 @@ export function MessageBubble({
               ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker" ? { borderLeft: `3px solid ${author.color}` } : {}),
               touchAction: "pan-y",
             }}
-            className={msg.kind === "sticker" && !msg.deleted ? `max-w-full relative select-none ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden select-none ${msg.pending ? "opacity-60" : ""} ${
+            className={`${msg.kind === "sticker" && !msg.deleted ? `max-w-full relative select-none ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden select-none ${msg.pending ? "opacity-60" : ""} ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
-            }`}
+            }`} ${isSearchCurrent ? `ring-2 ${t.accentRing} ring-offset-1 ring-offset-transparent` : ""}`}
           >
             {msg.deleted ? (
               <div className={`flex items-center gap-2 px-4 py-2.5 ${t.textMuted} font-comic`}>
@@ -237,16 +284,23 @@ export function MessageBubble({
                   /* Texto + hora estilo WhatsApp: en mensajes cortos comparten
                      línea; en largos la hora baja sola alineada a la derecha. */
                   <div className={`px-3.5 ${showAuthor ? "pt-0.5" : "pt-2"} pb-1.5 flex flex-wrap items-end gap-x-2`}>
-                    <div className={`min-w-0 font-comic font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>{formatText(msg.text)}</div>
-                    <div
-                      className={`ml-auto font-pixel whitespace-nowrap opacity-80 ${isMine ? "text-white/70" : t.textMuted}`}
-                      style={{ fontSize: "11px", lineHeight: "1.4" }}
-                    >{msg.time}</div>
+                    <div className={`min-w-0 font-comic font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>
+                      {formatText(msg.text)}
+                      {msg.streaming && (
+                        <motion.span
+                          animate={{ opacity: [1, 0.25, 1] }}
+                          transition={{ duration: 1, repeat: Infinity }}
+                          className="inline-block w-2 h-4 ml-0.5 align-text-bottom rounded-sm bg-purple-300/80"
+                          aria-label="ForwardBot está escribiendo"
+                        />
+                      )}
+                    </div>
+                    {!msg.streaming && metaRow("ml-auto")}
                   </div>
                 )}
                 {msg.kind === "image" && msg.imageUrl && (
                   <div className="px-2 pt-1">
-                    <img src={msg.imageUrl} alt="" className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
+                    <img src={msg.imageUrl} alt={msg.text || "Imagen adjunta"} className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
                     {msg.text && (
                       <div className={`px-2 pt-2 font-comic ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{formatText(msg.text)}</div>
                     )}
@@ -282,10 +336,9 @@ export function MessageBubble({
                   <AudioPlayer url={msg.audioUrl || ""} duration={msg.audioDuration || 0} theme={t} mine={isMine} />
                 )}
                 {msg.kind !== "text" && (
-                  <div
-                    style={{ fontSize: "11px" }}
-                    className={`font-pixel px-2.5 pb-1 pt-0.5 text-right whitespace-nowrap opacity-80 ${msg.kind === "sticker" ? `${t.textMuted} drop-shadow-sm` : isMine ? "text-white/70" : t.textMuted}`}
-                  >{msg.time}</div>
+                  <div className={`px-2.5 pb-1 pt-0.5 text-right ${msg.kind === "sticker" ? "drop-shadow-sm" : ""}`}>
+                    {metaRow()}
+                  </div>
                 )}
               </>
             )}
@@ -319,7 +372,7 @@ export function MessageBubble({
                   animate={{ scale: 1, rotate: 0 }}
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: "spring", stiffness: 500, damping: 18 }}
-                  onClick={() => onReact(rid)}
+                  onClick={() => onReact(msg.id, rid)}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full border shadow-md ${t.panel} ${
                     mineToo ? t.borderStrong : t.border
                   }`}
@@ -358,7 +411,7 @@ export function MessageBubble({
                         transition={{ delay: i * 0.04, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.3, y: -3 }}
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => onReact(rid)}
+                        onClick={() => onReact(msg.id, rid)}
                         className={`p-1.5 rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >
@@ -371,16 +424,24 @@ export function MessageBubble({
                 <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${t.border} md:hidden`}>
                   <button
                     onClick={() => {
-                      onReply();
+                      onReply(msg);
                       onClosePicker();
                     }}
                     className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-xs`}
                   >
                     <Reply className="size-3.5" /> Responder
                   </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => onEdit(msg)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-xs`}
+                    >
+                      <Pencil className="size-3.5" /> Editar
+                    </button>
+                  )}
                   {isMine && (
                     <button
-                      onClick={onDelete}
+                      onClick={() => onDelete(msg.id)}
                       className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}
                     >
                       <Trash2 className="size-3.5" /> Eliminar
@@ -397,7 +458,7 @@ export function MessageBubble({
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.92 }}
-          onClick={onAvatarClick}
+          onClick={() => onAvatarClick(author.id)}
           className="relative size-8 rounded-full flex items-center justify-center shrink-0 text-white overflow-hidden font-pixel-ui text-sm shadow-md"
           style={{ backgroundColor: author.color }}
           aria-label="Ver tu perfil"
@@ -409,3 +470,6 @@ export function MessageBubble({
     </motion.div>
   );
 }
+
+/** Memo: con cientos de mensajes evita re-renderizar burbujas sin cambios. */
+export const MessageBubble = React.memo(MessageBubbleInner);

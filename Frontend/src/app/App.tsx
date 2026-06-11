@@ -27,6 +27,7 @@ import { SideMenu } from "./components/layout/SideMenu";
 import { HomeScreen } from "./components/home/HomeScreen";
 import { MessageList } from "./components/chat/MessageList";
 import { Composer } from "./components/chat/Composer";
+import { SearchBar } from "./components/chat/SearchBar";
 // Lazy loading: modales y UI de llamadas salen del bundle inicial
 const ThemesModal = React.lazy(() => import("./components/modals/ThemesModal").then((m) => ({ default: m.ThemesModal })));
 const ImagePreviewModal = React.lazy(() => import("./components/modals/ImagePreviewModal").then((m) => ({ default: m.ImagePreviewModal })));
@@ -94,6 +95,7 @@ export default function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pendingImage, setPendingImage] = useState<{ file: File; previewUrl: string; caption: string } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
   const [showStickers, setShowStickers] = useState(false);
   const [stickers, setStickers] = useState<string[]>([]);
   const [favoriteStickers, setFavoriteStickers] = useState<string[]>([]);
@@ -101,6 +103,17 @@ export default function App() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+
+  // Confirmaciones de lectura (DMs): peerId -> timestamp de su última lectura
+  const [peerReads, setPeerReads] = useState<Record<string, number>>({});
+  // Búsqueda dentro del chat activo
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState(0);
+  // Calidad de conexión (RTT del socket en ms)
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  // Divisor "mensajes nuevos" al abrir un chat con pendientes
+  const [unreadMarker, setUnreadMarker] = useState<{ chat: string; id: string | number } | null>(null);
 
   // Refs para handlers de socket (evitan closures obsoletos)
   const selfIdRef = useRef(selfId);
@@ -110,8 +123,12 @@ export default function App() {
   const activeChatRef = useRef<string | null>(null);
   const isAtBottomRef = useRef(true);
   const participantsRef = useRef(participants);
+  const chatsRef = useRef(chats);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentRef = useRef(false);
+  const everConnectedRef = useRef(false);
+  const lastReadSentRef = useRef<Record<string, number>>({});
+  const prevChatRef = useRef<string | null | undefined>(undefined);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -129,6 +146,7 @@ export default function App() {
   activeChatRef.current = activeChat;
   isAtBottomRef.current = isAtBottom;
   participantsRef.current = participants;
+  chatsRef.current = chats;
 
   const me: Participant = participants[selfId] || {
     id: selfId,
@@ -269,6 +287,15 @@ export default function App() {
         if (saved) profile = JSON.parse(saved);
       } catch { /* sin perfil guardado */ }
       newSocket.emit("restore profile", profile);
+      // Recuperación tras reconexión: el servidor reenvía lobby/presencia con
+      // "restore profile"; aquí re-sincronizamos el DM abierto y avisamos.
+      if (everConnectedRef.current) {
+        if (activeChatRef.current && activeChatRef.current !== LOBBY) {
+          newSocket.emit("get dm history", { with: activeChatRef.current });
+        }
+        toast.success("Conexión restablecida");
+      }
+      everConnectedRef.current = true;
     });
 
     newSocket.on("disconnect", () => {
@@ -347,6 +374,55 @@ export default function App() {
         return parseServerMessage(data, resolveMediaUrl);
       });
       setChats((prev) => ({ ...prev, [payload.with]: formatted }));
+      // El servidor incluye las marcas de lectura del scope (para los checks)
+      const peerRead = payload.reads?.[payload.with];
+      if (typeof peerRead === "number") {
+        setPeerReads((prev) => (prev[payload.with] >= peerRead ? prev : { ...prev, [payload.with]: peerRead }));
+      }
+    });
+
+    newSocket.on("message edited", (payload: any) => {
+      if (!payload?.msgId || typeof payload.text !== "string") return;
+      const scope = payload.scope || LOBBY;
+      const chatKey = scope === LOBBY ? LOBBY : scope.split("|").find((p: string) => p !== selfIdRef.current) || scope;
+      setChats((prev) => {
+        const list = prev[chatKey];
+        if (!list) return prev;
+        return { ...prev, [chatKey]: list.map((m) => (m.id === payload.msgId ? { ...m, text: payload.text, edited: true } : m)) };
+      });
+    });
+
+    newSocket.on("dm read", (payload: any) => {
+      if (!payload?.by || payload.by === selfIdRef.current) return;
+      const at = typeof payload.at === "number" ? payload.at : Date.now();
+      setPeerReads((prev) => (prev[payload.by] >= at ? prev : { ...prev, [payload.by]: at }));
+    });
+
+    // Respuesta del bot en vivo: la burbuja crece con cada fragmento y el
+    // mensaje final del servidor la reemplaza (clientId = streamId).
+    newSocket.on("bot stream", (payload: any) => {
+      if (!payload?.streamId || typeof payload.text !== "string") return;
+      const scope = payload.scope || LOBBY;
+      const chatKey = scope === LOBBY ? LOBBY : scope.split("|").find((p: string) => p !== selfIdRef.current) || scope;
+      setChats((prev) => {
+        const list = prev[chatKey] || [];
+        const idx = list.findIndex((m) => m.id === payload.streamId);
+        if (idx === -1) {
+          const ts = Date.now();
+          const msg: Message = {
+            id: payload.streamId,
+            authorId: BOT_ID,
+            kind: "text",
+            text: payload.text,
+            time: fmtClock(ts),
+            timestamp: ts,
+            isBot: true,
+            streaming: !payload.done,
+          };
+          return { ...prev, [chatKey]: [...list, msg] };
+        }
+        return { ...prev, [chatKey]: list.map((m, i) => (i === idx ? { ...m, text: payload.text, streaming: !payload.done } : m)) };
+      });
     });
 
     newSocket.on("reaction updated", (payload: any) => {
@@ -423,19 +499,79 @@ export default function App() {
       socket.emit("get dm history", { with: activeChat });
     }
     if (activeChat) {
+      // Marcar el primer mensaje no leído para el divisor "Mensajes nuevos"
+      const count = unread[activeChat] || 0;
+      const list = chatsRef.current[activeChat] || [];
+      setUnreadMarker(count > 0 && list.length >= count ? { chat: activeChat, id: list[list.length - count].id } : null);
       setUnread((u) => ({ ...u, [activeChat]: 0 }));
       setUnreadCount(0);
       setReplyingTo(null);
+      setEditingMsg(null);
       setShowStickers(false);
       setMentionSearch(null);
+      setSearchOpen(false);
+      setSearchQuery("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat, isConnected]);
 
-  // Scroll automático
+  // Scroll automático que respeta la posición de lectura: solo baja si el
+  // usuario ya estaba al fondo o si el último mensaje es propio.
+  const lastMsg = activeMessages[activeMessages.length - 1];
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: ecoMode ? "auto" : "smooth" });
-  }, [activeMessages.length, activeChat, ecoMode]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const chatChanged = prevChatRef.current !== activeChat;
+    prevChatRef.current = activeChat;
+    if (chatChanged) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+      return;
+    }
+    if (isAtBottomRef.current || (lastMsg && lastMsg.authorId === selfId)) {
+      el.scrollTo({ top: el.scrollHeight, behavior: ecoMode ? "auto" : "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMessages.length, lastMsg?.text, activeChat, ecoMode, selfId]);
+
+  // Medición de latencia del socket (indicador de calidad de conexión)
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      setLatencyMs(null);
+      return;
+    }
+    let cancelled = false;
+    const measure = () => {
+      const t0 = performance.now();
+      socket.timeout(5000).emit("latency ping", (err: unknown) => {
+        if (cancelled) return;
+        setLatencyMs(err ? null : Math.max(1, Math.round(performance.now() - t0)));
+      });
+    };
+    measure();
+    const iv = window.setInterval(measure, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [socket, isConnected]);
+
+  // Confirmaciones de lectura: avisar al peer cuando realmente vi sus mensajes
+  useEffect(() => {
+    if (!socket || !isConnected || !activeChat || activeChat === LOBBY || !isAtBottom) return;
+    if (participants[activeChat]?.isBot) return;
+    const list = chats[activeChat] || [];
+    let lastPeerTs = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].authorId === activeChat) {
+        lastPeerTs = list[i].timestamp;
+        break;
+      }
+    }
+    if (lastPeerTs && lastPeerTs > (lastReadSentRef.current[activeChat] || 0)) {
+      lastReadSentRef.current[activeChat] = lastPeerTs;
+      socket.emit("dm read", { with: activeChat });
+    }
+  }, [socket, isConnected, activeChat, chats, isAtBottom, participants]);
 
   // Listener de scroll (botón "ir abajo" + contador)
   useEffect(() => {
@@ -463,8 +599,11 @@ export default function App() {
         setViewProfileId(null);
         setPendingImage(null);
         setReplyingTo(null);
+        setEditingMsg(null);
         setMentionSearch(null);
         setShowStickers(false);
+        setSearchOpen(false);
+        setSearchQuery("");
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -593,7 +732,8 @@ export default function App() {
     }
   };
 
-  const formatText = (text?: string) => {
+  // useCallback: identidad estable para que React.memo de las burbujas funcione
+  const formatText = React.useCallback((text?: string) => {
     if (!text) return "";
     const names = Object.values(participantsRef.current)
       .map((p) => p.name)
@@ -611,7 +751,7 @@ export default function App() {
       }
       return part;
     });
-  };
+  }, []);
 
   // ==========================================
   // ENVÍO DE MENSAJES
@@ -653,10 +793,10 @@ export default function App() {
     setReplyingTo(null);
   };
 
-  const sendText = () => {
-    const text = draft.trim();
+  const sendTextValue = (raw: string) => {
+    const text = raw.trim();
     if (!text) return;
-    const replyTo = buildReplyRef(replyingTo);
+    const replyTo = buildReplyRef(replyingToRef.current);
     const chatKey = activeChatRef.current || LOBBY;
     // Optimistic UI: pintar de inmediato; el eco del servidor lo confirma vía clientId
     const clientMsgId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -682,10 +822,52 @@ export default function App() {
       }));
       toast.warning("Sin conexión: el mensaje solo es visible para ti.");
     }
-    setDraft("");
     setMentionSearch(null);
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingSentRef.current = false;
+  };
+
+  const sendText = () => {
+    if (!draft.trim()) return;
+    sendTextValue(draft);
+    setDraft("");
+  };
+
+  // Acciones rápidas del bot: enviar la sugerencia tal cual
+  const sendQuickSuggestion = (text: string) => {
+    sendTextValue(text);
+  };
+
+  // ==========================================
+  // EDICIÓN DE MENSAJES
+  // ==========================================
+  const startEditing = (m: Message) => {
+    if (m.deleted || m.kind !== "text" || m.authorId !== selfId) return;
+    setReplyingTo(null);
+    setShowStickers(false);
+    setEditingMsg(m);
+    setOpenMenuFor(null);
+  };
+
+  const submitEdit = (text: string) => {
+    const m = editingMsg;
+    if (!m) return;
+    const trimmed = text.trim();
+    if (!trimmed || trimmed === m.text) {
+      setEditingMsg(null);
+      return;
+    }
+    const chatKey = activeChatRef.current || LOBBY;
+    // Optimistic UI: aplicar localmente; el eco "message edited" confirma
+    setChats((prev) => ({
+      ...prev,
+      [chatKey]: (prev[chatKey] || []).map((x) => (x.id === m.id ? { ...x, text: trimmed, edited: true } : x)),
+    }));
+    const isLocalOnly = String(m.id).startsWith("local-") || String(m.id).startsWith("c-");
+    if (socket && isConnected && !isLocalOnly) {
+      socket.emit("edit message", { scope: scopeForChat(chatKey), msgId: m.id, text: trimmed });
+    }
+    setEditingMsg(null);
   };
 
   const sendSticker = (url: string) => {
@@ -857,6 +1039,43 @@ export default function App() {
     : [];
   const canSend = draft.trim().length > 0;
   const inChat = activeChat !== null;
+
+  // ==========================================
+  // BÚSQUEDA EN EL CHAT ACTIVO
+  // ==========================================
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q || !activeChat) return [] as (string | number)[];
+    return (chats[activeChat] || [])
+      .filter((m) => !m.deleted && m.text && m.text.toLowerCase().includes(q))
+      .map((m) => m.id);
+  }, [searchOpen, searchQuery, activeChat, chats]);
+
+  // Al cambiar la consulta, posicionarse en la coincidencia más reciente
+  useEffect(() => {
+    setSearchIndex(searchMatches.length > 0 ? searchMatches.length - 1 : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, activeChat]);
+
+  // Desplazarse a la coincidencia actual
+  useEffect(() => {
+    const id = searchMatches[searchIndex];
+    if (id == null || !scrollRef.current) return;
+    const el = scrollRef.current.querySelector(`[data-msgid="${CSS.escape(String(id))}"]`);
+    el?.scrollIntoView({ block: "center", behavior: ecoMode ? "auto" : "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchIndex, searchMatches.length, searchOpen]);
+
+  const currentSearchId = searchOpen && searchMatches.length > 0 ? searchMatches[searchIndex] : null;
+
+  // Sugerencias rápidas para el chat con el bot
+  const botSuggestions = useMemo(
+    () =>
+      activeChat && participants[activeChat]?.isBot
+        ? ["Cuéntame un chiste", "Dibuja un gato astronauta", "Dame un dato curioso", "Ayúdame con una idea"]
+        : [],
+    [activeChat, participants]
+  );
   const overlayOpen = !!(showThemes || showProfile || menuOpen || viewProfileId || pendingImage || showFriends || showMembers);
 
   const bannerStyleFor = (p: Participant | null | undefined): React.CSSProperties => {
@@ -869,7 +1088,7 @@ export default function App() {
   // RENDER
   // ==========================================
   return (
-    <MotionConfig reducedMotion={ecoMode ? "always" : "never"}>
+    <MotionConfig reducedMotion={ecoMode ? "always" : "user"}>
     <div className={`size-full min-h-screen ${t.bg} ${t.text} flex items-center justify-center font-mono transition-colors duration-500`}>
       <Toaster position="top-center" expand={false} richColors />
       <div className={`relative w-full max-w-md h-[100dvh] md:h-[90vh] md:rounded-2xl overflow-hidden flex flex-col ${t.border} border ${t.bg}`}>
@@ -882,6 +1101,9 @@ export default function App() {
           typingNames={typingNames}
           onlineCount={onlineCount}
           rtc={rtc}
+          latencyMs={latencyMs}
+          isConnected={isConnected}
+          searchOpen={searchOpen}
           showBackIcon={overlayOpen || inChat}
           onNavClick={() => {
             if (overlayOpen) {
@@ -896,6 +1118,12 @@ export default function App() {
           onOpenMembers={() => setShowMembers(true)}
           onViewPeerProfile={() => activeChat && activeChat !== LOBBY && setViewProfileId(activeChat)}
           onSetStatus={(s) => updateMe({ status: s })}
+          onToggleSearch={() => {
+            setSearchOpen((o) => {
+              if (o) setSearchQuery("");
+              return !o;
+            });
+          }}
         />
 
         {/* Aviso de reconexión */}
@@ -928,6 +1156,20 @@ export default function App() {
           />
         ) : (
           <>
+            <SearchBar
+              open={searchOpen}
+              theme={t}
+              query={searchQuery}
+              matchCount={searchMatches.length}
+              matchIndex={searchIndex}
+              onChange={setSearchQuery}
+              onPrev={() => setSearchIndex((i) => (searchMatches.length ? (i - 1 + searchMatches.length) % searchMatches.length : 0))}
+              onNext={() => setSearchIndex((i) => (searchMatches.length ? (i + 1) % searchMatches.length : 0))}
+              onClose={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }}
+            />
             <MessageList
               theme={t}
               activeChat={activeChat!}
@@ -937,13 +1179,20 @@ export default function App() {
               selfId={selfId}
               scrollRef={scrollRef}
               isAtBottom={isAtBottom}
+              isConnected={isConnected}
               unreadCount={unreadCount}
+              unreadMarkerId={unreadMarker && unreadMarker.chat === activeChat ? unreadMarker.id : null}
+              peerReadAt={activeChat !== LOBBY ? peerReads[activeChat!] || 0 : 0}
+              showReceipts={activeChat !== LOBBY && !activePeer?.isBot}
+              searchActive={searchOpen && searchQuery.trim().length > 0}
+              currentSearchId={currentSearchId}
               openMenuFor={openMenuFor}
               onTogglePicker={(id) => setOpenMenuFor((cur) => (cur === id ? null : id))}
               onClosePicker={() => setOpenMenuFor(null)}
               onDelete={deleteMessage}
               onReact={toggleReaction}
               onReply={(m) => setReplyingTo(m)}
+              onEdit={startEditing}
               onViewProfile={(id) => setViewProfileId(id)}
               onSaveSticker={saveSticker}
               formatText={formatText}
@@ -966,6 +1215,11 @@ export default function App() {
               onSend={sendText}
               replyingTo={replyingTo}
               onCancelReply={() => setReplyingTo(null)}
+              editingMsg={editingMsg}
+              onSubmitEdit={submitEdit}
+              onCancelEdit={() => setEditingMsg(null)}
+              quickSuggestions={activeMessages.length <= 1 ? botSuggestions : []}
+              onQuickSuggestion={sendQuickSuggestion}
               showStickers={showStickers}
               onToggleStickers={() => setShowStickers(!showStickers)}
               onCloseStickers={() => setShowStickers(false)}
@@ -996,6 +1250,8 @@ export default function App() {
           perms={perms}
           ecoMode={ecoMode}
           friendCode={friendCode}
+          latencyMs={latencyMs}
+          isConnected={isConnected}
           bannerStyleFor={bannerStyleFor}
           onClose={closeAllOverlays}
           onEditProfile={() => { setMenuOpen(false); setShowProfile(true); }}

@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Copy, KeyRound, Leaf, Mic, Palette, Pencil, Trash2, User, UserPlus, Video } from "lucide-react";
+import { Copy, KeyRound, Leaf, Mic, Palette, Pencil, Trash2, User, UserPlus, Video, Wifi, WifiOff } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
@@ -65,6 +65,8 @@ export function SideMenu({
   perms,
   ecoMode,
   friendCode,
+  latencyMs,
+  isConnected,
   bannerStyleFor,
   onClose,
   onEditProfile,
@@ -82,6 +84,8 @@ export function SideMenu({
   perms: { mic: boolean; cam: boolean };
   ecoMode: boolean;
   friendCode: string;
+  latencyMs: number | null;
+  isConnected: boolean;
   bannerStyleFor: (p: Participant | null | undefined) => React.CSSProperties;
   onClose: () => void;
   onEditProfile: () => void;
@@ -188,6 +192,18 @@ export function SideMenu({
             </motion.nav>
 
             <div className={`p-3 border-t ${t.border}`}>
+              {/* Estado de conexión en tiempo real */}
+              <div className={`w-full mb-2 flex items-center gap-2 px-3 py-2 rounded-lg ${t.inputBg} border ${t.border} text-xs`} role="status">
+                {isConnected ? (
+                  <Wifi className={`size-3.5 ${latencyMs !== null && latencyMs >= 350 ? "text-red-400" : latencyMs !== null && latencyMs >= 120 ? "text-yellow-400" : "text-emerald-400"}`} />
+                ) : (
+                  <WifiOff className="size-3.5 text-red-400" />
+                )}
+                <span className="flex-1">Conexión</span>
+                <span className={t.textMuted}>
+                  {!isConnected ? "Reconectando..." : latencyMs === null ? "Midiendo..." : `${latencyMs} ms`}
+                </span>
+              </div>
               {friendCode && (
                 <button
                   onClick={onCopyFriendCode}

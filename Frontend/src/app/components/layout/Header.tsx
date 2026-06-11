@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Bot, Check, ChevronDown, Hash, Menu, MessageSquare, Phone, Sparkles, Users, Video } from "lucide-react";
+import { ArrowLeft, Bot, Check, ChevronDown, Hash, Menu, MessageSquare, Phone, Search, Sparkles, Users, Video } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { LOBBY, Participant, STATUSES, Status } from "../../lib/chat";
 import type { WebRTCApi } from "../../hooks/useWebRTC";
@@ -19,12 +19,16 @@ export function Header({
   typingNames,
   onlineCount,
   rtc,
+  latencyMs,
+  isConnected,
+  searchOpen,
   showBackIcon,
   onNavClick,
   onOpenProfile,
   onOpenMembers,
   onViewPeerProfile,
   onSetStatus,
+  onToggleSearch,
 }: {
   theme: ThemeTokens;
   me: Participant;
@@ -34,14 +38,27 @@ export function Header({
   typingNames: string[];
   onlineCount: number;
   rtc: WebRTCApi;
+  latencyMs: number | null;
+  isConnected: boolean;
+  searchOpen: boolean;
   showBackIcon: boolean;
   onNavClick: () => void;
   onOpenProfile: () => void;
   onOpenMembers: () => void;
   onViewPeerProfile: () => void;
   onSetStatus: (s: Status) => void;
+  onToggleSearch: () => void;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
+
+  // Calidad de conexión derivada del RTT del socket
+  const connQuality = !isConnected || latencyMs === null
+    ? { color: "bg-red-500", label: "Sin conexión" }
+    : latencyMs < 120
+      ? { color: "bg-emerald-500", label: `Conexión estable · ${latencyMs} ms` }
+      : latencyMs < 350
+        ? { color: "bg-yellow-500", label: `Conexión moderada · ${latencyMs} ms` }
+        : { color: "bg-red-500", label: `Conexión lenta · ${latencyMs} ms` };
 
   return (
     <motion.header
@@ -107,6 +124,16 @@ export function Header({
             </div>
           </button>
           <div className="flex items-center gap-1 shrink-0">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.05 }}
+              onClick={onToggleSearch}
+              className={`p-2 rounded-lg ${searchOpen ? `${t.accent} text-white` : t.iconBtn}`}
+              aria-label="Buscar en el chat"
+              aria-pressed={searchOpen}
+            >
+              <Search className="size-4.5" />
+            </motion.button>
             {activeChat === LOBBY ? (
               <>
                 <motion.button
@@ -186,7 +213,15 @@ export function Header({
           </motion.div>
 
           <div className="flex-1 min-w-0">
-            <div className="truncate font-display text-sm">Forward_Chat</div>
+            <div className="truncate font-display text-sm flex items-center gap-2">
+              Forward_Chat
+              <span
+                className={`size-1.5 rounded-full ${connQuality.color} ${isConnected ? "" : "animate-pulse"}`}
+                title={connQuality.label}
+                role="status"
+                aria-label={connQuality.label}
+              />
+            </div>
             <div className="relative inline-block">
               <motion.button
                 whileTap={{ scale: 0.96 }}
