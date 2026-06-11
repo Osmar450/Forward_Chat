@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
-import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { WifiOff } from "lucide-react";
@@ -11,15 +10,12 @@ import {
   Message,
   Participant,
   ReplyTo,
-  Status,
   USER_COLORS,
-  colorForUser,
-  dmScopeOf,
   downscaleImage,
   fmtClock,
   messagePreview,
-  parseServerMessage,
 } from "./lib/chat";
+import { useChatSocket } from "./hooks/useChatSocket";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useAudioRecorder } from "./hooks/useAudioRecorder";
 import { Header } from "./components/layout/Header";
@@ -38,9 +34,14 @@ const ProfileEditModal = React.lazy(() => import("./components/modals/ProfileEdi
 const CallOverlay = React.lazy(() => import("./components/call/CallOverlay").then((m) => ({ default: m.CallOverlay })));
 const IncomingCallModal = React.lazy(() => import("./components/call/IncomingCallModal").then((m) => ({ default: m.IncomingCallModal })));
 
+/**
+ * App: composición y estado de UI. La lógica de tiempo real vive en
+ * useChatSocket; la de llamadas en useWebRTC; la de grabación en
+ * useAudioRecorder. Este componente solo orquesta y renderiza.
+ */
 export default function App() {
   // ==========================================
-  // ESTADO BASE
+  // PREFERENCIAS LOCALES (tema, eco, permisos)
   // ==========================================
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -68,21 +69,21 @@ export default function App() {
   const permsRef = useRef(perms);
   permsRef.current = perms;
 
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [selfId, setSelfId] = useState("");
-  const [friendCode, setFriendCode] = useState("");
-  const [participants, setParticipants] = useState<Record<string, Participant>>({});
-  const [friends, setFriends] = useState<string[]>([]);
-  const [onlineIds, setOnlineIds] = useState<string[]>([]);
+  useEffect(() => {
+    localStorage.setItem("chatTheme", theme);
+  }, [theme]);
+  useEffect(() => {
+    localStorage.setItem("chatEcoMode", ecoMode ? "1" : "0");
+  }, [ecoMode]);
+  useEffect(() => {
+    localStorage.setItem("chatPermissions", JSON.stringify(perms));
+  }, [perms]);
 
-  // Mensajes por conversación: "lobby" o el userId del amigo (DM)
-  const [chats, setChats] = useState<Record<string, Message[]>>({ [LOBBY]: [] });
+  // ==========================================
+  // ESTADO DE UI
+  // ==========================================
   const [activeChat, setActiveChat] = useState<string | null>(null); // null = pantalla de inicio
-  const [unread, setUnread] = useState<Record<string, number>>({});
-  const [typingUsers, setTypingUsers] = useState<Record<string, Record<string, string>>>({});
-
-  // UI
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
@@ -99,56 +100,60 @@ export default function App() {
   const [showStickers, setShowStickers] = useState(false);
   const [stickers, setStickers] = useState<string[]>([]);
   const [favoriteStickers, setFavoriteStickers] = useState<string[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
 
-  // Confirmaciones de lectura (DMs): peerId -> timestamp de su última lectura
-  const [peerReads, setPeerReads] = useState<Record<string, number>>({});
   // Búsqueda dentro del chat activo
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIndex, setSearchIndex] = useState(0);
-  // Calidad de conexión (RTT del socket en ms)
-  const [latencyMs, setLatencyMs] = useState<number | null>(null);
   // Divisor "mensajes nuevos" al abrir un chat con pendientes
   const [unreadMarker, setUnreadMarker] = useState<{ chat: string; id: string | number } | null>(null);
-  // Paginación por cursor: chatKey -> el servidor tiene mensajes más antiguos
-  const [historyMore, setHistoryMore] = useState<Record<string, boolean>>({});
 
-  // Refs para handlers de socket (evitan closures obsoletos)
-  const selfIdRef = useRef(selfId);
-  const socketRef = useRef<Socket | null>(null);
-  const isConnectedRef = useRef(false);
   const replyingToRef = useRef<Message | null>(null);
   const activeChatRef = useRef<string | null>(null);
-  const isAtBottomRef = useRef(true);
-  const participantsRef = useRef(participants);
-  const chatsRef = useRef(chats);
-  const typingTimerRef = useRef<number | null>(null);
-  const typingSentRef = useRef(false);
-  const everConnectedRef = useRef(false);
-  const lastReadSentRef = useRef<Record<string, number>>({});
   const prevChatRef = useRef<string | null | undefined>(undefined);
-
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  replyingToRef.current = replyingTo;
+  activeChatRef.current = activeChat;
 
   const backendUrl = import.meta.env.DEV ? "http://localhost:3000" : (typeof window !== "undefined" ? window.location.origin : "/");
   const t = themes[theme];
+
+  // ==========================================
+  // CAPA DE TIEMPO REAL (toda la lógica de socket vive en el hook)
+  // ==========================================
+  const chat = useChatSocket({
+    backendUrl,
+    activeChat,
+    isAtBottom,
+    onOwnEcho: () => setReplyingTo(null),
+  });
+  const {
+    socket,
+    isConnected,
+    latencyMs,
+    selfId,
+    friendCode,
+    participants,
+    friends,
+    onlineIds,
+    chats,
+    unread,
+    unreadCount,
+    typingUsers,
+    peerReads,
+    historyMore,
+  } = chat;
+
+  const participantsRef = useRef(participants);
+  participantsRef.current = participants;
+
   const rtc = useWebRTC(socket, selfId, {
     mic: () => permsRef.current.mic,
     cam: () => permsRef.current.cam,
   });
-
-  selfIdRef.current = selfId;
-  socketRef.current = socket;
-  isConnectedRef.current = isConnected;
-  replyingToRef.current = replyingTo;
-  activeChatRef.current = activeChat;
-  isAtBottomRef.current = isAtBottom;
-  participantsRef.current = participants;
-  chatsRef.current = chats;
 
   const me: Participant = participants[selfId] || {
     id: selfId,
@@ -160,89 +165,12 @@ export default function App() {
   const activeMessages = activeChat ? chats[activeChat] || [] : [];
 
   // ==========================================
-  // HELPERS DE PARTICIPANTES
-  // ==========================================
-  const upsertParticipant = (data: any, opts: { allowSelf?: boolean } = {}) => {
-    const id = data.userId || data.id;
-    if (!id) return;
-    // El perfil PROPIO solo lo controlan el "session profile" inicial y mis ediciones locales.
-    // Nunca dejamos que perfiles incrustados en mensajes viejos o en la presencia lo reviertan
-    // (esa era la causa del bug: al renombrarte, un eco del servidor restauraba el nombre anterior).
-    if (id === selfIdRef.current && !opts.allowSelf) return;
-    setParticipants((prev) => {
-      const existing = prev[id];
-      const next: Participant = {
-        id,
-        name: data.name ?? existing?.name ?? id,
-        color: data.color ?? existing?.color ?? (id === BOT_ID ? "#8B5CF6" : colorForUser(id)),
-        avatar: data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
-        banner: data.banner !== undefined ? data.banner : existing?.banner ?? null,
-        bannerColor: data.bannerColor !== undefined ? data.bannerColor : existing?.bannerColor ?? null,
-        bio: data.bio !== undefined ? data.bio : existing?.bio ?? "",
-        status: (data.status as Status) ?? existing?.status ?? "online",
-        isBot: data.isBot ?? existing?.isBot ?? id === BOT_ID,
-      };
-      return { ...prev, [id]: next };
-    });
-  };
-
-  const scopeForChat = (chatKey: string) => (chatKey === LOBBY ? LOBBY : dmScopeOf(selfIdRef.current, chatKey));
-
-  const resolveMediaUrl = (url?: string | null) => {
-    if (!url) return undefined;
-    if (/^(blob:|data:|https?:\/\/)/i.test(url)) return url;
-    return `${backendUrl}${url.startsWith("/") ? "" : "/"}${url}`;
-  };
-
-  const appendMessage = (chatKey: string, msg: Message) => {
-    setChats((prev) => {
-      const list = prev[chatKey] || [];
-      if (list.some((m) => m.id === msg.id)) return prev;
-      // Optimistic UI: el eco del servidor reemplaza al mensaje local pendiente
-      const pendingIdx = msg.clientId != null ? list.findIndex((m) => m.id === msg.clientId) : -1;
-      const next = pendingIdx !== -1 ? list.map((m, i) => (i === pendingIdx ? msg : m)) : [...list, msg];
-      return { ...prev, [chatKey]: next };
-    });
-    if (msg.authorId === selfIdRef.current) {
-      setReplyingTo(null);
-    } else if (activeChatRef.current !== chatKey) {
-      setUnread((u) => ({ ...u, [chatKey]: (u[chatKey] || 0) + 1 }));
-    } else if (!isAtBottomRef.current) {
-      setUnreadCount((c) => c + 1);
-    }
-  };
-
-  // ==========================================
-  // PERSISTENCIA LOCAL (tema, eco, perfil, stickers)
+  // PERSISTENCIA DE STICKERS
   // ==========================================
   useEffect(() => {
-    localStorage.setItem("chatTheme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem("chatEcoMode", ecoMode ? "1" : "0");
-  }, [ecoMode]);
-
-  useEffect(() => {
-    localStorage.setItem("chatPermissions", JSON.stringify(perms));
-  }, [perms]);
-
-  useEffect(() => {
-    const savedProfile = localStorage.getItem("chatProfile");
-    if (savedProfile) {
-      try {
-        const profile = JSON.parse(savedProfile);
-        if (profile.userId) {
-          setSelfId(profile.userId);
-          upsertParticipant({ ...profile, userId: profile.userId, status: profile.status || "online" }, { allowSelf: true });
-        }
-      } catch (e) {
-        console.error("Error loading profile:", e);
-      }
-    }
-    const savedStickers = localStorage.getItem("chatStickers");
-    const savedFavs = localStorage.getItem("chatFavoriteStickers");
     try {
+      const savedStickers = localStorage.getItem("chatStickers");
+      const savedFavs = localStorage.getItem("chatFavoriteStickers");
       if (savedStickers) setStickers(JSON.parse(savedStickers));
       if (savedFavs) setFavoriteStickers(JSON.parse(savedFavs));
     } catch { /* datos corruptos: ignorar */ }
@@ -256,283 +184,21 @@ export default function App() {
     localStorage.setItem("chatFavoriteStickers", JSON.stringify(favoriteStickers));
   }, [favoriteStickers]);
 
-  useEffect(() => {
-    if (selfId && participants[selfId]) {
-      const p = participants[selfId];
-      localStorage.setItem("chatProfile", JSON.stringify({
-        userId: selfId,
-        name: p.name,
-        color: p.color,
-        avatar: p.avatar,
-        banner: p.banner,
-        bannerColor: p.bannerColor,
-        bio: p.bio,
-        status: p.status,
-      }));
-    }
-  }, [selfId, participants]);
-
   // ==========================================
-  // SOCKET.IO
+  // EFECTOS DE NAVEGACIÓN Y SCROLL
   // ==========================================
+
+  // Abrir un chat: pedir historial DM, fijar divisor de no leídos y limpiar composer
   useEffect(() => {
-    const newSocket = io(backendUrl);
-    setSocket(newSocket);
-    socketRef.current = newSocket;
-
-    newSocket.on("connect", () => {
-      setIsConnected(true);
-      isConnectedRef.current = true;
-      let profile: any = {};
-      try {
-        const saved = localStorage.getItem("chatProfile");
-        if (saved) profile = JSON.parse(saved);
-      } catch { /* sin perfil guardado */ }
-      newSocket.emit("restore profile", profile);
-      // Recuperación tras reconexión: el servidor reenvía lobby/presencia con
-      // "restore profile"; aquí re-sincronizamos el DM abierto y avisamos.
-      if (everConnectedRef.current) {
-        if (activeChatRef.current && activeChatRef.current !== LOBBY) {
-          newSocket.emit("get dm history", { with: activeChatRef.current });
-        }
-        toast.success("Conexión restablecida");
-      }
-      everConnectedRef.current = true;
-    });
-
-    newSocket.on("disconnect", () => {
-      setIsConnected(false);
-      isConnectedRef.current = false;
-    });
-
-    newSocket.on("session profile", (data: any) => {
-      if (!data?.userId) return;
-      // "Goldilocks": el servidor solo siembra mi perfil la PRIMERA vez (sin datos locales).
-      // En reconexiones, lo local (localStorage + ediciones del usuario) es la fuente de
-      // verdad y ya viajó al servidor vía 'restore profile' — así un eco viejo no revierte
-      // el nombre, pero el input nunca queda bloqueado.
-      const firstTime = selfIdRef.current !== data.userId || !participantsRef.current[data.userId];
-      setSelfId(data.userId);
-      selfIdRef.current = data.userId;
-      if (data.friendCode) setFriendCode(data.friendCode);
-      if (firstTime) upsertParticipant(data, { allowSelf: true });
-    });
-
-    newSocket.on("bot profile", (data: any) => upsertParticipant(data));
-
-    newSocket.on("users online", (list: any[]) => {
-      if (!Array.isArray(list)) return;
-      setOnlineIds(list.map((p) => p.userId));
-      list.forEach((p) => upsertParticipant(p));
-    });
-
-    newSocket.on("profile updated", (data: any) => upsertParticipant(data));
-
-    newSocket.on("friends list", (list: any[]) => {
-      if (!Array.isArray(list)) return;
-      setFriends(list.map((p) => p.userId));
-      list.forEach((p) => upsertParticipant(p));
-    });
-
-    newSocket.on("friend added", (data: any) => {
-      if (data?.profile) {
-        upsertParticipant(data.profile);
-        toast.success(`¡${data.profile.name} ahora es tu amigo!`);
-      }
-    });
-
-    newSocket.on("friend error", (data: any) => {
-      toast.error(data?.message || "No se pudo agregar al amigo.");
-    });
-
-    newSocket.on("error toast", (data: any) => {
-      toast.error(data?.message || "Algo salió mal.");
-    });
-
-    newSocket.on("message history", (history: any[]) => {
-      const formatted = history.map((data) => {
-        if (data.profile) upsertParticipant(data.profile);
-        return parseServerMessage(data, resolveMediaUrl);
-      });
-      setChats((prev) => ({ ...prev, [LOBBY]: formatted }));
-    });
-
-    newSocket.on("chat message", (data: any) => {
-      if (data.profile) upsertParticipant(data.profile);
-      appendMessage(LOBBY, parseServerMessage(data, resolveMediaUrl));
-    });
-
-    newSocket.on("dm message", (data: any) => {
-      if (data.profile) upsertParticipant(data.profile);
-      const peer = data.userId === selfIdRef.current ? data.to : data.userId;
-      if (!peer) return;
-      appendMessage(peer, parseServerMessage(data, resolveMediaUrl));
-    });
-
-    newSocket.on("dm history", (payload: any) => {
-      if (!payload?.with || !Array.isArray(payload.messages)) return;
-      const formatted = payload.messages.map((data: any) => {
-        if (data.profile) upsertParticipant(data.profile);
-        return parseServerMessage(data, resolveMediaUrl);
-      });
-      setChats((prev) => ({ ...prev, [payload.with]: formatted }));
-      setHistoryMore((prev) => ({ ...prev, [payload.with]: !!payload.hasMore }));
-      // El servidor incluye las marcas de lectura del scope (para los checks)
-      const peerRead = payload.reads?.[payload.with];
-      if (typeof peerRead === "number") {
-        setPeerReads((prev) => (prev[payload.with] >= peerRead ? prev : { ...prev, [payload.with]: peerRead }));
-      }
-    });
-
-    // Paginación: el servidor avisa si hay historial más antiguo disponible
-    newSocket.on("history meta", (payload: any) => {
-      if (!payload?.with) return;
-      const chatKey = payload.with === "lobby" ? LOBBY : payload.with;
-      setHistoryMore((prev) => ({ ...prev, [chatKey]: !!payload.hasMore }));
-    });
-
-    // Página de mensajes anteriores (cursor): se antepone al historial local
-    newSocket.on("older messages", (payload: any) => {
-      if (!payload?.with || !Array.isArray(payload.messages)) return;
-      const chatKey = payload.with === "lobby" ? LOBBY : payload.with;
-      const older = payload.messages.map((data: any) => {
-        if (data.profile) upsertParticipant(data.profile);
-        return parseServerMessage(data, resolveMediaUrl);
-      });
-      setChats((prev) => {
-        const list = prev[chatKey] || [];
-        const existing = new Set(list.map((m) => m.id));
-        const fresh = older.filter((m: Message) => !existing.has(m.id));
-        if (fresh.length === 0) return prev;
-        return { ...prev, [chatKey]: [...fresh, ...list] };
-      });
-      setHistoryMore((prev) => ({ ...prev, [chatKey]: !!payload.hasMore }));
-    });
-
-    newSocket.on("message edited", (payload: any) => {
-      if (!payload?.msgId || typeof payload.text !== "string") return;
-      const scope = payload.scope || LOBBY;
-      const chatKey = scope === LOBBY ? LOBBY : scope.split("|").find((p: string) => p !== selfIdRef.current) || scope;
-      setChats((prev) => {
-        const list = prev[chatKey];
-        if (!list) return prev;
-        return { ...prev, [chatKey]: list.map((m) => (m.id === payload.msgId ? { ...m, text: payload.text, edited: true } : m)) };
-      });
-    });
-
-    newSocket.on("dm read", (payload: any) => {
-      if (!payload?.by || payload.by === selfIdRef.current) return;
-      const at = typeof payload.at === "number" ? payload.at : Date.now();
-      setPeerReads((prev) => (prev[payload.by] >= at ? prev : { ...prev, [payload.by]: at }));
-    });
-
-    // Respuesta del bot en vivo: la burbuja crece con cada fragmento y el
-    // mensaje final del servidor la reemplaza (clientId = streamId).
-    newSocket.on("bot stream", (payload: any) => {
-      if (!payload?.streamId || typeof payload.text !== "string") return;
-      const scope = payload.scope || LOBBY;
-      const chatKey = scope === LOBBY ? LOBBY : scope.split("|").find((p: string) => p !== selfIdRef.current) || scope;
-      setChats((prev) => {
-        const list = prev[chatKey] || [];
-        const idx = list.findIndex((m) => m.id === payload.streamId);
-        if (idx === -1) {
-          const ts = Date.now();
-          const msg: Message = {
-            id: payload.streamId,
-            authorId: BOT_ID,
-            kind: "text",
-            text: payload.text,
-            time: fmtClock(ts),
-            timestamp: ts,
-            isBot: true,
-            streaming: !payload.done,
-          };
-          return { ...prev, [chatKey]: [...list, msg] };
-        }
-        return { ...prev, [chatKey]: list.map((m, i) => (i === idx ? { ...m, text: payload.text, streaming: !payload.done } : m)) };
-      });
-    });
-
-    newSocket.on("reaction updated", (payload: any) => {
-      if (!payload?.scope || !payload?.msgId) return;
-      const chatKey = payload.scope === LOBBY ? LOBBY : payload.scope.split("|").find((p: string) => p !== selfIdRef.current) || payload.scope;
-      setChats((prev) => {
-        const list = prev[chatKey];
-        if (!list) return prev;
-        return {
-          ...prev,
-          [chatKey]: list.map((m) => (m.id === payload.msgId ? { ...m, reactions: payload.reactions || {} } : m)),
-        };
-      });
-    });
-
-    newSocket.on("message deleted", (payload: any) => {
-      const msgId = payload?.msgId ?? payload;
-      const scope = payload?.scope || LOBBY;
-      const chatKey = scope === LOBBY ? LOBBY : scope.split("|").find((p: string) => p !== selfIdRef.current) || scope;
-      setChats((prev) => {
-        const list = prev[chatKey];
-        if (!list) return prev;
-        return { ...prev, [chatKey]: list.map((m) => (m.id === msgId ? { ...m, deleted: true } : m)) };
-      });
-    });
-
-    newSocket.on("typing", (payload: any) => {
-      if (!payload?.scope || !payload?.userId) return;
-      const chatKey = payload.scope === LOBBY ? LOBBY : payload.userId === selfIdRef.current ? payload.scope : payload.userId;
-      setTypingUsers((prev) => {
-        const inChat = { ...(prev[chatKey] || {}) };
-        if (payload.typing) inChat[payload.userId] = payload.name || "Alguien";
-        else delete inChat[payload.userId];
-        return { ...prev, [chatKey]: inChat };
-      });
-      if (payload.typing) {
-        // Red de seguridad: expirar el indicador si nunca llega typing:false
-        setTimeout(() => {
-          setTypingUsers((prev) => {
-            const inChat = { ...(prev[chatKey] || {}) };
-            delete inChat[payload.userId];
-            return { ...prev, [chatKey]: inChat };
-          });
-        }, 8000);
-      }
-    });
-
-    return () => {
-      newSocket.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
-
-  // Sincronizar mi perfil con el servidor cuando cambie
-  useEffect(() => {
-    if (socket && isConnected && selfId && participants[selfId]) {
-      const p = participants[selfId];
-      socket.emit("set profile", {
-        name: p.name,
-        avatar: p.avatar || null,
-        color: p.color,
-        banner: p.banner || null,
-        bannerColor: p.bannerColor || null,
-        bio: p.bio || "",
-        status: p.status === "offline" ? "online" : p.status,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participants[selfId]?.name, participants[selfId]?.avatar, participants[selfId]?.color, participants[selfId]?.banner, participants[selfId]?.bannerColor, participants[selfId]?.bio, participants[selfId]?.status, isConnected, socket, selfId]);
-
-  // Pedir historial del DM al abrirlo
-  useEffect(() => {
-    if (activeChat && activeChat !== LOBBY && socket && isConnected) {
-      socket.emit("get dm history", { with: activeChat });
+    if (activeChat && activeChat !== LOBBY && isConnected) {
+      chat.requestDmHistory(activeChat);
     }
     if (activeChat) {
-      // Marcar el primer mensaje no leído para el divisor "Mensajes nuevos"
       const count = unread[activeChat] || 0;
-      const list = chatsRef.current[activeChat] || [];
+      const list = chats[activeChat] || [];
       setUnreadMarker(count > 0 && list.length >= count ? { chat: activeChat, id: list[list.length - count].id } : null);
-      setUnread((u) => ({ ...u, [activeChat]: 0 }));
-      setUnreadCount(0);
+      chat.setUnread((u) => ({ ...u, [activeChat]: 0 }));
+      chat.resetUnreadCount();
       setReplyingTo(null);
       setEditingMsg(null);
       setShowStickers(false);
@@ -555,51 +221,11 @@ export default function App() {
       el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
       return;
     }
-    if (isAtBottomRef.current || (lastMsg && lastMsg.authorId === selfId)) {
+    if (isAtBottom || (lastMsg && lastMsg.authorId === selfId)) {
       el.scrollTo({ top: el.scrollHeight, behavior: ecoMode ? "auto" : "smooth" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMessages.length, lastMsg?.text, activeChat, ecoMode, selfId]);
-
-  // Medición de latencia del socket (indicador de calidad de conexión)
-  useEffect(() => {
-    if (!socket || !isConnected) {
-      setLatencyMs(null);
-      return;
-    }
-    let cancelled = false;
-    const measure = () => {
-      const t0 = performance.now();
-      socket.timeout(5000).emit("latency ping", (err: unknown) => {
-        if (cancelled) return;
-        setLatencyMs(err ? null : Math.max(1, Math.round(performance.now() - t0)));
-      });
-    };
-    measure();
-    const iv = window.setInterval(measure, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, [socket, isConnected]);
-
-  // Confirmaciones de lectura: avisar al peer cuando realmente vi sus mensajes
-  useEffect(() => {
-    if (!socket || !isConnected || !activeChat || activeChat === LOBBY || !isAtBottom) return;
-    if (participants[activeChat]?.isBot) return;
-    const list = chats[activeChat] || [];
-    let lastPeerTs = 0;
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].authorId === activeChat) {
-        lastPeerTs = list[i].timestamp;
-        break;
-      }
-    }
-    if (lastPeerTs && lastPeerTs > (lastReadSentRef.current[activeChat] || 0)) {
-      lastReadSentRef.current[activeChat] = lastPeerTs;
-      socket.emit("dm read", { with: activeChat });
-    }
-  }, [socket, isConnected, activeChat, chats, isAtBottom, participants]);
 
   // Listener de scroll (botón "ir abajo" + contador)
   useEffect(() => {
@@ -608,11 +234,11 @@ export default function App() {
     const handleScroll = () => {
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 100;
       setIsAtBottom(atBottom);
-      isAtBottomRef.current = atBottom;
-      if (atBottom) setUnreadCount(0);
+      if (atBottom) chat.resetUnreadCount();
     };
     el.addEventListener("scroll", handleScroll);
     return () => el.removeEventListener("scroll", handleScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat]);
 
   // Tecla Escape cierra modales
@@ -641,15 +267,10 @@ export default function App() {
   // ==========================================
   // ACCIONES DE PERFIL
   // ==========================================
-  const updateMe = (patch: Partial<Participant>) => {
-    if (!selfId) return;
-    setParticipants((prev) => ({ ...prev, [selfId]: { ...(prev[selfId] || me), ...patch, id: selfId } }));
-  };
-
   const handleAvatarFile = async (file: File) => {
     try {
       const dataUrl = await downscaleImage(file, 256);
-      updateMe({ avatar: dataUrl });
+      chat.updateMe({ avatar: dataUrl });
       toast.success("Foto de perfil actualizada");
     } catch {
       toast.error("No se pudo procesar la imagen");
@@ -659,7 +280,7 @@ export default function App() {
   const handleBannerFile = async (file: File) => {
     try {
       const dataUrl = await downscaleImage(file, 1024, 0.8);
-      updateMe({ banner: dataUrl, bannerColor: null });
+      chat.updateMe({ banner: dataUrl, bannerColor: null });
       toast.success("Banner actualizado");
     } catch {
       toast.error("No se pudo procesar la imagen");
@@ -671,21 +292,6 @@ export default function App() {
     navigator.clipboard?.writeText(friendCode)
       .then(() => toast.success("Forward Token copiado al portapapeles"))
       .catch(() => toast.error("No se pudo copiar"));
-  };
-
-  const submitAddFriend = (code: string) => {
-    if (!code) return;
-    if (socket && isConnected) {
-      socket.emit("add friend", { code });
-    } else {
-      toast.error("Sin conexión con el servidor.");
-    }
-  };
-
-  const removeFriend = (fid: string) => {
-    const name = participants[fid]?.name || fid;
-    socket?.emit("remove friend", { userId: fid });
-    toast.info(`${name} eliminado de tus amigos.`);
   };
 
   // ==========================================
@@ -710,23 +316,9 @@ export default function App() {
     setMentionSearch(null);
   };
 
-  const emitTyping = () => {
-    if (!socketRef.current || !isConnectedRef.current || !activeChatRef.current) return;
-    const scope = activeChatRef.current === LOBBY ? LOBBY : activeChatRef.current;
-    if (!typingSentRef.current) {
-      socketRef.current.emit("typing", { scope, typing: true });
-      typingSentRef.current = true;
-    }
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = window.setTimeout(() => {
-      typingSentRef.current = false;
-      socketRef.current?.emit("typing", { scope, typing: false });
-    }, 1800);
-  };
-
   const onDraftChange = (val: string) => {
     setDraft(val);
-    emitTyping();
+    chat.emitTyping();
     if (activeChat === LOBBY) {
       const lastAt = val.lastIndexOf("@");
       const lastSpace = val.lastIndexOf(" ");
@@ -796,19 +388,6 @@ export default function App() {
     };
   };
 
-  const emitMessage = (payload: Record<string, unknown>) => {
-    const chatKey = activeChatRef.current || LOBBY;
-    if (socketRef.current && isConnectedRef.current) {
-      if (chatKey === LOBBY) {
-        socketRef.current.emit("chat message", payload);
-      } else {
-        socketRef.current.emit("dm message", { ...payload, to: chatKey });
-      }
-      return true;
-    }
-    return false;
-  };
-
   const appendLocal = (msg: Omit<Message, "id" | "time" | "timestamp">) => {
     const ts = Date.now();
     const local: Message = {
@@ -817,7 +396,7 @@ export default function App() {
       time: fmtClock(ts),
       timestamp: ts,
     };
-    setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [...(prev[activeChatRef.current || LOBBY] || []), local] }));
+    chat.setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [...(prev[activeChatRef.current || LOBBY] || []), local] }));
     setReplyingTo(null);
   };
 
@@ -829,52 +408,35 @@ export default function App() {
     // Optimistic UI: pintar de inmediato; el eco del servidor lo confirma vía clientId
     const clientMsgId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const ts = Date.now();
-    setChats((prev) => ({
+    chat.setChats((prev) => ({
       ...prev,
       [chatKey]: [...(prev[chatKey] || []), { id: clientMsgId, authorId: selfId, kind: "text" as const, text, replyTo, time: fmtClock(ts), timestamp: ts, pending: true }],
     }));
     setReplyingTo(null);
-    if (emitMessage({ msgId: clientMsgId, text, replyTo })) {
+    if (chat.emitMessage({ msgId: clientMsgId, text, replyTo })) {
       // Rollback silencioso: si en 10s el servidor no confirmó, quitar la marca de pendiente
       setTimeout(() => {
-        setChats((prev) => {
+        chat.setChats((prev) => {
           const list = prev[chatKey] || [];
           if (!list.some((m) => m.id === clientMsgId && m.pending)) return prev;
           return { ...prev, [chatKey]: list.map((m) => (m.id === clientMsgId ? { ...m, pending: false } : m)) };
         });
       }, 10000);
     } else {
-      setChats((prev) => ({
+      chat.setChats((prev) => ({
         ...prev,
         [chatKey]: (prev[chatKey] || []).map((m) => (m.id === clientMsgId ? { ...m, pending: false } : m)),
       }));
       toast.warning("Sin conexión: el mensaje solo es visible para ti.");
     }
     setMentionSearch(null);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingSentRef.current = false;
+    chat.clearTypingState();
   };
 
   const sendText = () => {
     if (!draft.trim()) return;
     sendTextValue(draft);
     setDraft("");
-  };
-
-  // Pedir al servidor la página anterior del historial (cursor = primer mensaje)
-  const requestOlderMessages = () => {
-    const chatKey = activeChatRef.current || LOBBY;
-    const first = (chatsRef.current[chatKey] || [])[0];
-    if (!socketRef.current || !isConnectedRef.current || !first) return;
-    socketRef.current.emit("get older messages", {
-      with: chatKey === LOBBY ? "lobby" : chatKey,
-      before: first.timestamp,
-    });
-  };
-
-  // Acciones rápidas del bot: enviar la sugerencia tal cual
-  const sendQuickSuggestion = (text: string) => {
-    sendTextValue(text);
   };
 
   // ==========================================
@@ -892,26 +454,13 @@ export default function App() {
     const m = editingMsg;
     if (!m) return;
     const trimmed = text.trim();
-    if (!trimmed || trimmed === m.text) {
-      setEditingMsg(null);
-      return;
-    }
-    const chatKey = activeChatRef.current || LOBBY;
-    // Optimistic UI: aplicar localmente; el eco "message edited" confirma
-    setChats((prev) => ({
-      ...prev,
-      [chatKey]: (prev[chatKey] || []).map((x) => (x.id === m.id ? { ...x, text: trimmed, edited: true } : x)),
-    }));
-    const isLocalOnly = String(m.id).startsWith("local-") || String(m.id).startsWith("c-");
-    if (socket && isConnected && !isLocalOnly) {
-      socket.emit("edit message", { scope: scopeForChat(chatKey), msgId: m.id, text: trimmed });
-    }
+    if (trimmed && trimmed !== m.text) chat.editMessage(m.id, trimmed);
     setEditingMsg(null);
   };
 
   const sendSticker = (url: string) => {
     const replyTo = buildReplyRef(replyingTo);
-    if (!emitMessage({ kind: "sticker", imageUrls: [url], replyTo })) {
+    if (!chat.emitMessage({ kind: "sticker", imageUrls: [url], replyTo })) {
       appendLocal({ authorId: selfId, kind: "sticker", imageUrl: url, replyTo });
     }
     setShowStickers(false);
@@ -923,7 +472,7 @@ export default function App() {
     const res = await fetch(`${backendUrl}/upload`, { method: "POST", body: form });
     if (!res.ok) throw new Error("Error subiendo archivo");
     const json = await res.json();
-    return Array.isArray(json.files) ? json.files : [];
+    return Array.isArray(json.files) ? (json.files as { url?: string }[]) : [];
   };
 
   const queueImage = (file: File) => {
@@ -938,12 +487,12 @@ export default function App() {
     const previewUrl = pendingImage.previewUrl;
     const file = pendingImage.file;
     setPendingImage(null);
-    if (socketRef.current && isConnectedRef.current) {
+    if (isConnected) {
       try {
         const uploaded = await uploadFiles([file]);
-        const uploadedUrl = resolveMediaUrl(uploaded[0]?.url);
+        const uploadedUrl = chat.resolveMediaUrl(uploaded[0]?.url);
         if (!uploadedUrl) throw new Error("upload");
-        emitMessage({ imageUrls: [uploadedUrl], text: caption, replyTo });
+        chat.emitMessage({ imageUrls: [uploadedUrl], text: caption, replyTo });
         URL.revokeObjectURL(previewUrl);
         return;
       } catch {
@@ -957,12 +506,12 @@ export default function App() {
   const { recording, recordSeconds, startRecording, stopRecording } = useAudioRecorder(
     async (file, duration, localUrl) => {
       const replyTo = buildReplyRef(replyingToRef.current);
-      if (socketRef.current && isConnectedRef.current) {
+      if (isConnected) {
         try {
           const uploaded = await uploadFiles([file]);
-          const uploadedUrl = resolveMediaUrl(uploaded[0]?.url);
+          const uploadedUrl = chat.resolveMediaUrl(uploaded[0]?.url);
           if (!uploadedUrl) throw new Error("upload");
-          emitMessage({ audioUrl: uploadedUrl, audioDuration: duration, replyTo });
+          chat.emitMessage({ audioUrl: uploadedUrl, audioDuration: duration, replyTo });
           return;
         } catch {
           toast.error("No se pudo subir el audio; se muestra solo localmente.");
@@ -971,44 +520,6 @@ export default function App() {
       appendLocal({ authorId: selfId, kind: "audio", audioUrl: localUrl, audioDuration: duration, replyTo });
     }
   );
-
-  const deleteMessage = (id: string | number) => {
-    const chatKey = activeChatRef.current || LOBBY;
-    if (socket && isConnected && !String(id).startsWith("local-")) {
-      socket.emit("delete message", { scope: scopeForChat(chatKey), msgId: id });
-    } else {
-      setChats((prev) => ({
-        ...prev,
-        [chatKey]: (prev[chatKey] || []).map((m) => (m.id === id ? { ...m, deleted: true } : m)),
-      }));
-    }
-    setOpenMenuFor(null);
-  };
-
-  const toggleReaction = (id: string | number, reactionId: string) => {
-    const chatKey = activeChatRef.current || LOBBY;
-    if (socket && isConnected && !String(id).startsWith("local-")) {
-      socket.emit("reaction", { scope: scopeForChat(chatKey), msgId: id, reaction: reactionId });
-    } else {
-      // Fallback local sin conexión
-      setChats((prev) => ({
-        ...prev,
-        [chatKey]: (prev[chatKey] || []).map((m) => {
-          if (m.id !== id) return m;
-          const reactions = { ...(m.reactions || {}) };
-          const users = reactions[reactionId] || [];
-          if (users.includes(selfId)) {
-            reactions[reactionId] = users.filter((u) => u !== selfId);
-            if (reactions[reactionId].length === 0) delete reactions[reactionId];
-          } else {
-            reactions[reactionId] = [...users, selfId];
-          }
-          return { ...m, reactions };
-        }),
-      }));
-    }
-    setOpenMenuFor(null);
-  };
 
   // ==========================================
   // STICKERS
@@ -1156,7 +667,7 @@ export default function App() {
           onOpenProfile={() => setShowProfile(true)}
           onOpenMembers={() => setShowMembers(true)}
           onViewPeerProfile={() => activeChat && activeChat !== LOBBY && setViewProfileId(activeChat)}
-          onSetStatus={(s) => updateMe({ status: s })}
+          onSetStatus={(s) => chat.updateMe({ status: s })}
           onToggleSearch={() => {
             setSearchOpen((o) => {
               if (o) setSearchQuery("");
@@ -1189,6 +700,7 @@ export default function App() {
             dmList={dmList}
             lastOf={lastOf}
             unread={unread}
+            typingUsers={typingUsers}
             onlineCount={onlineCount}
             onOpenChat={(id) => setActiveChat(id)}
             onAddFriend={() => setShowFriends(true)}
@@ -1226,12 +738,18 @@ export default function App() {
               searchActive={searchOpen && searchQuery.trim().length > 0}
               currentSearchId={currentSearchId}
               serverHasMore={!!historyMore[activeChat!]}
-              onLoadOlder={requestOlderMessages}
+              onLoadOlder={chat.requestOlderMessages}
               openMenuFor={openMenuFor}
               onTogglePicker={(id) => setOpenMenuFor((cur) => (cur === id ? null : id))}
               onClosePicker={() => setOpenMenuFor(null)}
-              onDelete={deleteMessage}
-              onReact={toggleReaction}
+              onDelete={(id) => {
+                chat.deleteMessage(id);
+                setOpenMenuFor(null);
+              }}
+              onReact={(id, rid) => {
+                chat.toggleReaction(id, rid);
+                setOpenMenuFor(null);
+              }}
               onReply={(m) => setReplyingTo(m)}
               onEdit={startEditing}
               onViewProfile={(id) => setViewProfileId(id)}
@@ -1239,7 +757,7 @@ export default function App() {
               formatText={formatText}
               onScrollToBottom={() => {
                 scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-                setUnreadCount(0);
+                chat.resetUnreadCount();
               }}
             />
 
@@ -1251,6 +769,7 @@ export default function App() {
               participants={participants}
               draft={draft}
               canSend={canSend}
+              typingNames={typingNames}
               onDraftChange={onDraftChange}
               onKeyDown={onDraftKeyDown}
               onSend={sendText}
@@ -1260,7 +779,7 @@ export default function App() {
               onSubmitEdit={submitEdit}
               onCancelEdit={() => setEditingMsg(null)}
               quickSuggestions={activeMessages.length <= 1 ? botSuggestions : []}
-              onQuickSuggestion={sendQuickSuggestion}
+              onQuickSuggestion={sendTextValue}
               showStickers={showStickers}
               onToggleStickers={() => setShowStickers(!showStickers)}
               onCloseStickers={() => setShowStickers(false)}
@@ -1317,7 +836,7 @@ export default function App() {
             toast.success(ecoMode ? "Modo Eco desactivado" : "Modo Eco activado: menos animaciones, menos batería");
           }}
           onClearChat={() => {
-            setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [] }));
+            chat.setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [] }));
             toast.info("Chat limpiado localmente (solo en tu pantalla).");
           }}
           onCopyFriendCode={copyFriendCode}
@@ -1360,11 +879,11 @@ export default function App() {
           friends={friends}
           participants={participants}
           onCopyCode={copyFriendCode}
-          onAddFriend={submitAddFriend}
+          onAddFriend={chat.addFriend}
           onClose={() => setShowFriends(false)}
           onViewProfile={(id) => setViewProfileId(id)}
           onOpenChat={(id) => setActiveChat(id)}
-          onRemoveFriend={removeFriend}
+          onRemoveFriend={chat.removeFriend}
         />
 
         <ProfileViewModal
@@ -1384,7 +903,7 @@ export default function App() {
           theme={t}
           friendCode={friendCode}
           bannerStyleFor={bannerStyleFor}
-          updateMe={updateMe}
+          updateMe={chat.updateMe}
           onPickAvatar={handleAvatarFile}
           onPickBanner={handleBannerFile}
           onCopyCode={copyFriendCode}

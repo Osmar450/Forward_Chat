@@ -36,6 +36,15 @@ export type ReplyTo = {
 // Las reacciones llegan del servidor como { "i:heart": [userId, ...] }
 export type ReactionMap = Record<string, string[]>;
 
+/** Metadatos OpenGraph que el servidor adjunta a mensajes con URL. */
+export type LinkPreview = {
+  url: string;
+  title: string;
+  description?: string | null;
+  image?: string | null;
+  siteName?: string | null;
+};
+
 export type Message = {
   id: string | number;
   /** id local optimista; el eco del servidor lo trae para reconciliar */
@@ -57,6 +66,7 @@ export type Message = {
   /** Respuesta del bot llegando en vivo (fragmentos por socket) */
   streaming?: boolean;
   reactions?: ReactionMap;
+  linkPreview?: LinkPreview;
   isBot?: boolean;
 };
 
@@ -189,14 +199,17 @@ export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Prom
   });
 
 /** Convierte el payload del servidor en un Message del cliente. */
-export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | null) => string | undefined): Message => {
+export const parseServerMessage = (
+  data: import("./socketEvents").ServerMessagePayload & { edited?: boolean },
+  resolveMediaUrl: (u?: string | null) => string | undefined
+): Message => {
   const isSticker = data.kind === "sticker" || data.text === "sticker_file";
   const hasImage = (data.imageUrls && data.imageUrls.length > 0) || data.imageUrl;
   const ts = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
   return {
     id: data.msgId ?? `${ts}-${Math.random().toString(36).slice(2, 7)}`,
     clientId: data.clientId ?? undefined,
-    authorId: data.userId || data.id,
+    authorId: data.userId || data.id || "",
     kind: (isSticker ? "sticker" : hasImage ? "image" : data.audioUrl ? "audio" : "text") as MessageKind,
     text: isSticker || data.text === "sticker_file" ? undefined : (data.text || undefined),
     imageUrl: resolveMediaUrl((data.imageUrls && data.imageUrls[0]) || data.imageUrl || undefined),
@@ -208,6 +221,7 @@ export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | nul
     deleted: !!data.deleted,
     edited: !!data.edited,
     reactions: data.reactions && typeof data.reactions === "object" ? data.reactions : undefined,
+    linkPreview: data.linkPreview || undefined,
     isBot: data.isBot || data.userId === "forwardbot",
   };
 };
