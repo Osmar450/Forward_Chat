@@ -4,6 +4,7 @@ import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Smile, Sparkles, Star, T
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
 import {
+  EDIT_WINDOW_MS,
   Message,
   Participant,
   REACTIONS,
@@ -80,7 +81,10 @@ function MessageBubbleInner({
   const SWIPE_TRIGGER = 56;
   const SWIPE_MAX = 80;
 
-  const canEdit = isMine && !msg.deleted && msg.kind === "text";
+  // Editar/borrar solo dentro de la ventana de 15 min (el servidor la impone igual)
+  const withinEditWindow = Date.now() - msg.timestamp < EDIT_WINDOW_MS;
+  const canEdit = isMine && !msg.deleted && msg.kind === "text" && withinEditWindow;
+  const canDelete = isMine && !msg.deleted && withinEditWindow;
 
   const startLongPress = () => {
     longPressedRef.current = false;
@@ -176,7 +180,7 @@ function MessageBubbleInner({
         </motion.button>
       )}
 
-      {isMine && !msg.deleted && (
+      {isMine && !msg.deleted && (canEdit || canDelete) && (
         <span className="flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden">
           {canEdit && (
             <motion.button
@@ -190,16 +194,18 @@ function MessageBubbleInner({
               <Pencil className="size-4" />
             </motion.button>
           )}
-          <motion.button
-            whileHover={{ scale: 1.15, rotate: -10 }}
-            whileTap={{ scale: 0.85, rotate: 15 }}
-            transition={{ type: "spring", stiffness: 400, damping: 18 }}
-            onClick={() => onDelete(msg.id)}
-            className={`p-2 rounded-full ${t.iconBtn} text-red-400`}
-            aria-label="Eliminar mensaje"
-          >
-            <Trash2 className="size-4" />
-          </motion.button>
+          {canDelete && (
+            <motion.button
+              whileHover={{ scale: 1.15, rotate: -10 }}
+              whileTap={{ scale: 0.85, rotate: 15 }}
+              transition={{ type: "spring", stiffness: 400, damping: 18 }}
+              onClick={() => onDelete(msg.id)}
+              className={`p-2 rounded-full ${t.iconBtn} text-red-400`}
+              aria-label="Eliminar mensaje"
+            >
+              <Trash2 className="size-4" />
+            </motion.button>
+          )}
         </span>
       )}
 
@@ -484,7 +490,7 @@ function MessageBubbleInner({
                       <Pencil className="size-3.5" /> Editar
                     </button>
                   )}
-                  {isMine && (
+                  {canDelete && (
                     <button
                       onClick={() => onDelete(msg.id)}
                       className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}

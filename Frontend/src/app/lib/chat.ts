@@ -135,6 +135,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Mensajes consecutivos del mismo autor dentro de esta ventana se agrupan. */
 export const GROUP_GAP_MS = 5 * 60 * 1000;
 
+/** Ventana para editar/borrar mensajes propios (espejo del servidor). */
+export const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
 export const startOfDay = (ts: number) => {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);

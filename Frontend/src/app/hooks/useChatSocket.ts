@@ -325,7 +325,16 @@ export function useChatSocket(options: {
 
     newSocket.on("message deleted", (payload: MessageDeletedPayload) => {
       const msgId = payload?.msgId ?? (payload as unknown as string | number);
-      patchMessage(payload?.scope, msgId, { deleted: true });
+      // Tombstone: el objeto permanece en la lista (sin saltos de scroll), solo se vacía
+      patchMessage(payload?.scope, msgId, {
+        deleted: true,
+        text: undefined,
+        imageUrl: undefined,
+        audioUrl: undefined,
+        linkPreview: undefined,
+        replyTo: undefined,
+        reactions: {},
+      });
     });
 
     newSocket.on("reaction updated", (payload: ReactionUpdatedPayload) => {
@@ -567,13 +576,18 @@ export function useChatSocket(options: {
 
   const deleteMessage = useCallback((msgId: string | number) => {
     const chatKey = activeChatRef.current || LOBBY;
+    // Optimistic UI: tombstone inmediato; el eco "message deleted" confirma.
+    // No se quita el objeto de la lista para no provocar saltos de scroll.
+    setChats((prev) => ({
+      ...prev,
+      [chatKey]: (prev[chatKey] || []).map((m) =>
+        m.id === msgId
+          ? { ...m, deleted: true, text: undefined, imageUrl: undefined, audioUrl: undefined, linkPreview: undefined, replyTo: undefined, reactions: {} }
+          : m
+      ),
+    }));
     if (socketRef.current && isConnectedRef.current && !isLocalOnly(msgId)) {
       socketRef.current.emit("delete message", { scope: scopeForChat(chatKey), msgId });
-    } else {
-      setChats((prev) => ({
-        ...prev,
-        [chatKey]: (prev[chatKey] || []).map((m) => (m.id === msgId ? { ...m, deleted: true } : m)),
-      }));
     }
   }, [scopeForChat]);
 

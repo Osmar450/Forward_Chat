@@ -4,6 +4,8 @@ const { findMessage, emitToScope } = require('../realtime');
 // ==========================================
 // REACCIONES SINCRONIZADAS + BORRADO
 // ==========================================
+// Ventana para editar/borrar mensajes propios (el cliente la espeja en chat.ts)
+const EDIT_DELETE_WINDOW_MS = 15 * 60 * 1000;
 function register(io, socket) {
     socket.on('reaction', (payload) => {
         if (!socket.userId) return;
@@ -47,10 +49,15 @@ function register(io, socket) {
             socket.emit('error toast', { message: 'Solo puedes editar tus propios mensajes.' });
             return;
         }
+        if (Date.now() - message.timestamp > EDIT_DELETE_WINDOW_MS) {
+            socket.emit('error toast', { message: 'Ya no se puede editar: pasaron más de 15 minutos.' });
+            return;
+        }
         const hasMedia = (message.imageUrls && message.imageUrls.length > 0) || message.audioUrl;
         if (hasMedia || message.kind === 'sticker') return;
         message.text = text;
         message.edited = true;
+        message.editedAt = Date.now();
         scheduleSave();
         emitToScope(scope, 'message edited', { scope, msgId, text, edited: true });
     });
@@ -62,16 +69,29 @@ function register(io, socket) {
         if (!socket.userId) return;
         const scope = payload?.scope || 'lobby';
         const msgId = payload?.msgId ?? payload; // compatibilidad con clientes viejos
+        if (scope !== 'lobby') {
+            const parts = scope.split('|');
+            if (!parts.includes(socket.userId)) return;
+        }
         const message = findMessage(scope, msgId);
         if (!message) return;
         if (message.userId !== socket.userId) {
             socket.emit('error toast', { message: 'Solo puedes borrar tus propios mensajes.' });
             return;
         }
+        if (Date.now() - message.timestamp > EDIT_DELETE_WINDOW_MS) {
+            socket.emit('error toast', { message: 'Ya no se puede borrar: pasaron más de 15 minutos.' });
+            return;
+        }
+        // Tombstone: el mensaje no se elimina del array (los clientes mantienen
+        // el layout y el scroll); solo se vacía su contenido.
         message.deleted = true;
         message.text = '';
         message.imageUrls = [];
         message.audioUrl = null;
+        message.reactions = {};
+        message.replyTo = null;
+        message.linkPreview = null;
         scheduleSave();
         emitToScope(scope, 'message deleted', { scope, msgId });
     });
