@@ -46,7 +46,7 @@ function ProfileEditCard({
     const finalName = tempName.trim() || me.name || "anónimo";
     updateMe({ name: finalName, bio: tempBio.trim() });
     onClose();
-    toast.success("Perfil guardado ✨");
+    toast.success("Perfil guardado");
   };
 
   return (

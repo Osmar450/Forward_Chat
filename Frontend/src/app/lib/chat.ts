@@ -33,7 +33,7 @@ export type ReplyTo = {
   text?: string;
 };
 
-// Las reacciones llegan del servidor como { "e:😀": [userId, ...], "i:heart": [...] }
+// Las reacciones llegan del servidor como { "i:heart": [userId, ...] }
 export type ReactionMap = Record<string, string[]>;
 
 export type Message = {
@@ -62,8 +62,6 @@ export const BANNER_COLORS = [
   "#ef4444", "#3b82f6", "#1e293b", "#831843", "#14532d",
 ];
 
-export const QUICK_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🙏", "😡"];
-
 export const AUDIO_MIME_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
 
 export const STATUSES: Record<Status, { label: string; color: string; bg: string; icon: React.ComponentType<{ className?: string; fill?: string }> }> = {
@@ -85,9 +83,9 @@ export const REACTIONS: { key: ReactionKey; icon: React.ComponentType<{ classNam
 
 export const messagePreview = (kind: MessageKind, text?: string) => {
   const trimmed = text?.trim();
-  if (kind === "image") return trimmed || "📷 Foto";
-  if (kind === "audio") return "🎤 Audio";
-  if (kind === "sticker") return "🖼️ Sticker";
+  if (kind === "image") return trimmed || "Foto";
+  if (kind === "audio") return "Audio";
+  if (kind === "sticker") return "Sticker";
   return trimmed || "Mensaje";
 };
 

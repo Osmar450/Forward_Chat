@@ -31,7 +31,7 @@ export function IncomingCallModal({
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.85, y: 30, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className={`w-full max-w-xs ${t.panel} border ${t.borderStrong} rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center`}
+            className={`w-full max-w-xs ${t.panel} border-2 ${t.borderStrong} rounded-3xl p-6 pixel-card flex flex-col items-center text-center`}
           >
             {/* Avatar con anillos de "ring" */}
             <div className="relative mb-4">

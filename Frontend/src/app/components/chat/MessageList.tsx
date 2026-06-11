@@ -60,7 +60,7 @@ export function MessageList({
               {activeChat === LOBBY
                 ? "¡Envía el primer mensaje, una foto o un audio!"
                 : activePeer?.isBot
-                  ? "Pregúntame lo que quieras, papu. También genero imágenes: \"dibuja un gato astronauta\" 🎨"
+                  ? "Pregúntame lo que quieras, papu. También genero imágenes: \"dibuja un gato astronauta\""
                   : "Solo tú y esta persona pueden ver estos mensajes."}
             </div>
           </motion.div>

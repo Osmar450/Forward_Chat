@@ -12,16 +12,21 @@ const { uploadsDir } = require('./uploads');
 // ==========================================
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
-const botPersona = `Tu nombre es ForwardBot. Eres un asistente de IA exclusivo de la aplicación Forward_Chat. Tienes una personalidad dual que debes adaptar según el contexto:
+const botPersona = `Eres ForwardBot, el asistente oficial y la leyenda residente de Forward_Chat. No eres un bot genérico: tienes carácter, memoria del contexto y orgullo de barrio.
 
-1. MODO RELAJADO (Charlas normales y saludos): Eres muy "cool", sarcástico y de barrio. Usa modismos mexicanos y frases como "whatsup my n", "¡Qué onda broski!", "Hola Papu", "¡Qué rollo cabroncito!" o "wey".
-2. MODO SERIO (Ciencia, historia, lógica, programación, temas profundos): Cuando el usuario pregunte sobre estos temas, CAMBIA INMEDIATAMENTE a un tono serio, respetuoso y profesional. NO abuses de modismos ni uses tecnicismos excesivos; explica las cosas de forma clara, objetiva y fácil de entender.
+== PERSONALIDAD (doble cara, un solo carisma) ==
+1. MODO BARRIO (charla casual, saludos, cotorreo): Carismático, sarcástico ligero y de barrio mexicano. Usas apodos como "broski", "papu", "compa", "wey" o "cabroncito" con cariño, nunca con agresión. Tienes humor rápido: respondes con punch, no con párrafos. Te encanta presumir que eres el bot más rápido del lobby.
+2. MODO PRO (ciencia, historia, programación, tareas, problemas serios): Cambias al instante a un tono claro, profesional y didáctico. Explicas con estructura (pasos, listas, ejemplos cortos), sin tecnicismos innecesarios y sin modismos. Si el tema es delicado o personal, eres empático y directo, cero burlas.
 
-REGLA DE LONGITUD:
-- Saludos, chistes o preguntas simples (sí/no): Responde de forma EXTREMADAMENTE CORTA (1 o 2 líneas máximo).
-- Explicaciones de historia, ciencia o resolución de problemas: Da una respuesta LARGA, completa, estructurada y educativa.
-
-Si te preguntan quién eres, di que eres el mismísimo ForwardBot.`;
+== REGLAS DE ORO ==
+- SIEMPRE dirígete al usuario por su nombre cuando lo conozcas (viene en el contexto).
+- Saludos/chistes/preguntas simples: máximo 1-2 líneas. Explicaciones: completas y bien organizadas.
+- NO repitas el mismo saludo o muletilla dos veces seguidas en la conversación; varía tu vocabulario.
+- Usa el historial del chat para dar continuidad: retoma temas, recuerda lo que te dijeron y nunca contestes como si fuera el primer mensaje.
+- Si te preguntan quién eres: el mismísimo ForwardBot, orgullo de Forward_Chat.
+- Si te piden una imagen, diles que usen el comando: "dibuja ..." o "genera ...".
+- Responde en español salvo que te pidan otro idioma. Nunca inventes datos: si no sabes, dilo sin rodeos.
+- Máximo un emoji por respuesta, y solo si aporta.`;
 
 const availableModels = [
     {
@@ -29,7 +34,7 @@ const availableModels = [
         model: genAI ? genAI.getGenerativeModel({
             model: 'gemini-3.1-flash-lite',
             systemInstruction: botPersona,
-            generationConfig: { maxOutputTokens: 500 }
+            generationConfig: { maxOutputTokens: 800 }
         }) : null,
         priority: 1
     },
@@ -157,31 +162,32 @@ async function respondAsBot(scope, prompt, userName, replyContext) {
             return;
         }
 
-        // Construir contexto según el ámbito (lobby público o DM privado)
+        // Construir contexto según el ámbito (lobby público o DM privado).
+        // Se incluyen los mensajes del propio bot para que tenga continuidad
+        // conversacional real y no se repita.
         let contextPrompt = prompt;
         if (scope === 'lobby') {
             const recentMessages = store.lobby
-                .filter(m => m.userId !== BOT_ID)
-                .slice(-10)
-                .map(m => `- ${m.profile?.name || 'Usuario'}: "${m.text || ''}"`);
+                .slice(-16)
+                .map(m => `- ${m.userId === BOT_ID ? 'ForwardBot (tú)' : (m.profile?.name || 'Usuario')}: "${(m.text || '').substring(0, 280)}"`);
             const connectedUsers = Array.from(userSockets.keys())
                 .map(uid => store.users[uid]?.name)
                 .filter(Boolean)
                 .slice(0, 10);
             const contextInfo = [];
             if (connectedUsers.length) contextInfo.push(`Usuarios conectados al lobby: ${connectedUsers.join(', ')}`);
-            if (recentMessages.length) contextInfo.push(`Últimos mensajes del lobby:\n${recentMessages.join('\n')}`);
-            if (contextInfo.length) contextPrompt = `${contextInfo.join('\n\n')}\n\nMensaje actual de ${userName}: "${prompt}"`;
+            if (recentMessages.length) contextInfo.push(`Conversación reciente del lobby (de la más vieja a la más nueva):\n${recentMessages.join('\n')}`);
+            if (contextInfo.length) contextPrompt = `${contextInfo.join('\n\n')}\n\nAhora ${userName} te dice: "${prompt}"\n\nResponde a ${userName} con continuidad (no saludes de nuevo si ya estaban platicando).`;
         } else {
             const history = (store.dms[scope] || [])
-                .slice(-12)
-                .map(m => `${m.userId === BOT_ID ? 'ForwardBot' : userName}: "${(m.text || '').substring(0, 300)}"`);
+                .slice(-16)
+                .map(m => `${m.userId === BOT_ID ? 'ForwardBot (tú)' : userName}: "${(m.text || '').substring(0, 280)}"`);
             if (history.length) {
-                contextPrompt = `Estás en un chat PRIVADO uno-a-uno con ${userName}. Historial reciente:\n${history.join('\n')}\n\nNuevo mensaje de ${userName}: "${prompt}"`;
+                contextPrompt = `Chat PRIVADO uno-a-uno con ${userName}. Historial (de la más vieja a la más nueva):\n${history.join('\n')}\n\nNuevo mensaje de ${userName}: "${prompt}"\n\nResponde con continuidad y memoria de lo anterior.`;
             }
         }
         if (replyContext) {
-            contextPrompt = `El usuario está respondiendo a tu mensaje anterior: "${replyContext}"\n\n${contextPrompt}`;
+            contextPrompt = `${userName} está respondiendo directamente a este mensaje tuyo: "${String(replyContext).substring(0, 280)}"\n\n${contextPrompt}`;
         }
 
         const { text } = await generateBotText(contextPrompt);

@@ -100,11 +100,11 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     const micOk = permsRef.current?.mic ? permsRef.current.mic() : true;
     const camOk = permsRef.current?.cam ? permsRef.current.cam() : true;
     if (!micOk) {
-      toast.error("Activa el Micrófono en el menú de Permisos para usar esta función. 🎙️");
+      toast.error("Activa el Micrófono en el menú de Permisos para usar esta función.");
       return false;
     }
     if (kind === "video" && !camOk) {
-      toast.error("Activa la Cámara en el menú de Permisos para usar esta función. 🎥");
+      toast.error("Activa la Cámara en el menú de Permisos para usar esta función.");
       return false;
     }
     return true;
@@ -187,7 +187,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
   // ---------- Media ----------
   const getMedia = useCallback(async (kind: CallKind): Promise<MediaStream | null> => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("Las llamadas requieren HTTPS o localhost (contexto seguro). 🔒");
+      toast.error("Las llamadas requieren HTTPS o localhost (contexto seguro).");
       return null;
     }
     try {
@@ -202,7 +202,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       return stream;
     } catch (err: any) {
       if (err?.name === "NotAllowedError" || err?.name === "SecurityError") {
-        toast.error(kind === "video" ? "Permiso de cámara/micrófono denegado 🎥🚫" : "Permiso de micrófono denegado 🎙️🚫");
+        toast.error(kind === "video" ? "Permiso de cámara/micrófono denegado" : "Permiso de micrófono denegado");
       } else if (err?.name === "NotFoundError") {
         toast.error(kind === "video" ? "No se encontró cámara o micrófono." : "No se encontró micrófono.");
       } else {
@@ -274,10 +274,10 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
         if (!connectedOnce) {
           connectedOnce = true;
-          toast.success("Audio conectado 🎧");
+          toast.success("Audio conectado");
         }
       } else if (pc.iceConnectionState === "failed") {
-        toast.error("La red bloquea la conexión de audio. Se necesita un servidor TURN (VITE_TURN_URLS). 🌐");
+        toast.error("La red bloquea la conexión de audio. Se necesita un servidor TURN (VITE_TURN_URLS).");
         try { (pc as any).restartIce?.(); } catch { /* navegador viejo */ }
       }
     };
@@ -322,7 +322,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
     outgoingTimerRef.current = window.setTimeout(() => {
       if (callStateRef.current === "outgoing") {
         socket.emit("call-end", { to: peerId });
-        toast.info("Nadie contestó la llamada. 📞");
+        toast.info("Nadie contestó la llamada.");
         fullCleanup();
       }
     }, CALL_TIMEOUT_MS);
@@ -428,7 +428,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
         offer: payload.offer,
       });
       setCallState("incoming");
-      toast.info(`📞 ${payload.fromName || "Alguien"} te está llamando...`, { duration: 8000 });
+      toast.info(`${payload.fromName || "Alguien"} te está llamando...`, { duration: 8000 });
     };
 
     const onAnswer = async (payload: any) => {
@@ -465,9 +465,9 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       if (callScopeRef.current !== payload?.from) return;
       const name = payload?.fromName || "El usuario";
       toast.info(
-        payload?.reason === "busy" ? `${name} está en otra llamada. 📵`
-        : payload?.reason === "offline" ? `${name} no está conectado ahora mismo. 📴`
-        : payload?.reason === "blocked" ? "Necesitan ser amigos para llamarse. 🤝"
+        payload?.reason === "busy" ? `${name} está en otra llamada.`
+        : payload?.reason === "offline" ? `${name} no está conectado ahora mismo.`
+        : payload?.reason === "blocked" ? "Necesitan ser amigos para llamarse."
         : "Llamada rechazada."
       );
       fullCleanup();
@@ -481,7 +481,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       } else if (incomingRef.current?.from === payload.from) {
         setIncoming(null);
         if (callStateRef.current === "incoming") setCallState("idle");
-        toast.info("Llamada perdida 📞");
+        toast.info("Llamada perdida");
       } else {
         removePeer(payload.from);
       }

@@ -175,7 +175,7 @@ export function SideMenu({
 
               <MenuItem
                 icon={<Leaf className={`size-5 ${ecoMode ? "text-emerald-400" : ""}`} />}
-                label={`Modo Eco: ${ecoMode ? "Activado 🌱" : "Desactivado"}`}
+                label={`Modo Eco: ${ecoMode ? "Activado" : "Desactivado"}`}
                 onClick={onToggleEco}
                 mutedColor={t.textMuted}
               />
@@ -200,7 +200,7 @@ export function SideMenu({
                 </button>
               )}
               <div className={`text-[10px] ${t.textMuted} tracking-widest text-center font-pixel-ui`}>
-                FORWARD_CHAT v3.0 {ecoMode && "🌱"}
+                FORWARD_CHAT v3.0
               </div>
             </div>
           </motion.aside>

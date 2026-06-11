@@ -73,7 +73,7 @@ export function FriendsModal({
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
               onClick={onCopyCode}
-              className={`w-full mb-1 flex items-center justify-between gap-2 px-4 py-3 rounded-xl border-2 ${t.borderStrong} ${t.inputBg}`}
+              className={`w-full mb-1 flex items-center justify-between gap-2 px-4 py-3 rounded-xl border-2 pixel-chip ${t.borderStrong} ${t.inputBg}`}
             >
               <span className="flex items-center gap-2">
                 <KeyRound className={`size-4 ${t.accentText}`} />
@@ -112,7 +112,7 @@ export function FriendsModal({
             </div>
             {friends.length === 0 ? (
               <div className={`text-xs ${t.textMuted} text-center py-6`}>
-                Aún no tienes amigos agregados.<br />¡Intercambia tokens para empezar! 🤝
+                Aún no tienes amigos agregados.<br />¡Intercambia tokens para empezar!
               </div>
             ) : (
               <div className="space-y-1">

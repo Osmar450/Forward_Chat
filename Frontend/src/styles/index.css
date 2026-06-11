@@ -14,3 +14,16 @@
     scrollbar-width: none;  /* Firefox */
   }
 }
+
+@layer utilities {
+  /* Estética pixel-art sutil: bordes definidos y sombras sólidas (sin blur) */
+  .pixel-card {
+    box-shadow: 4px 4px 0 0 rgb(0 0 0 / 0.3);
+  }
+  .pixel-chip {
+    box-shadow: 2px 2px 0 0 rgb(0 0 0 / 0.25);
+  }
+  .pixel-avatar {
+    box-shadow: 3px 3px 0 0 rgb(0 0 0 / 0.35);
+  }
+}

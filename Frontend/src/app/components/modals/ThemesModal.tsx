@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Moon, Palette, Sun } from "lucide-react";
-import { themes, Theme, ThemeTokens } from "../../lib/themes";
+import { themes, Theme, ThemeTokens, LIGHT_THEMES, DARK_THEMES } from "../../lib/themes";
 import { CloseButton } from "../common/CloseButton";
 
 /** Selector de modo claro/oscuro y tema de color. */
@@ -76,10 +76,7 @@ export function ThemesModal({
               animate="show"
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } } }}
             >
-              {(t.isLight
-                ? (["candy", "redWhite"] as Theme[])
-                : (["monokai", "solarized", "dracula", "oneDark", "redDark"] as Theme[])
-              ).map((key) => {
+              {(t.isLight ? LIGHT_THEMES : DARK_THEMES).map((key) => {
                 const opt = themes[key];
                 const selected = key === theme;
                 return (
@@ -92,7 +89,7 @@ export function ThemesModal({
                     whileHover={{ y: -3, scale: 1.02 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => onSetTheme(key)}
-                    className={`relative p-3 rounded-xl border-2 transition-colors text-left ${
+                    className={`relative p-3 rounded-xl border-2 transition-all text-left pixel-chip ${
                       selected ? opt.borderStrong : t.border
                     } ${t.inputBg}`}
                   >

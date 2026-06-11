@@ -304,7 +304,7 @@ export default function App() {
     newSocket.on("friend added", (data: any) => {
       if (data?.profile) {
         upsertParticipant(data.profile);
-        toast.success(`¡${data.profile.name} ahora es tu amigo! 🤝`);
+        toast.success(`¡${data.profile.name} ahora es tu amigo!`);
       }
     });
 
@@ -498,7 +498,7 @@ export default function App() {
   const copyFriendCode = () => {
     if (!friendCode) return;
     navigator.clipboard?.writeText(friendCode)
-      .then(() => toast.success("Forward Token copiado 📋"))
+      .then(() => toast.success("Forward Token copiado al portapapeles"))
       .catch(() => toast.error("No se pudo copiar"));
   };
 
@@ -979,20 +979,20 @@ export default function App() {
           onToggleMic={() => {
             setPerms((p) => {
               const next = { ...p, mic: !p.mic };
-              toast.info(next.mic ? "Micrófono habilitado para llamadas 🎙️" : "Micrófono deshabilitado: no podrás llamar ni contestar.");
+              toast.info(next.mic ? "Micrófono habilitado para llamadas" : "Micrófono deshabilitado: no podrás llamar ni contestar.");
               return next;
             });
           }}
           onToggleCam={() => {
             setPerms((p) => {
               const next = { ...p, cam: !p.cam };
-              toast.info(next.cam ? "Cámara habilitada para videollamadas 🎥" : "Cámara deshabilitada: las videollamadas quedan bloqueadas.");
+              toast.info(next.cam ? "Cámara habilitada para videollamadas" : "Cámara deshabilitada: las videollamadas quedan bloqueadas.");
               return next;
             });
           }}
           onToggleEco={() => {
             setEcoMode((v) => !v);
-            toast.success(ecoMode ? "Modo Eco desactivado" : "Modo Eco 🌱: menos animaciones, menos batería");
+            toast.success(ecoMode ? "Modo Eco desactivado" : "Modo Eco activado: menos animaciones, menos batería");
           }}
           onClearChat={() => {
             setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [] }));

@@ -7,7 +7,6 @@ import {
   Message,
   Participant,
   REACTIONS,
-  QUICK_EMOJIS,
   STATUSES,
   Status,
   messagePreview,
@@ -158,7 +157,7 @@ export function MessageBubble({
         </motion.button>
       )}
 
-      <div className={`relative flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+      <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
         {!msg.deleted && (
           <motion.span
             animate={{
@@ -200,7 +199,7 @@ export function MessageBubble({
               ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker" ? { borderLeft: `3px solid ${author.color}` } : {}),
               touchAction: "pan-y",
             }}
-            className={msg.kind === "sticker" && !msg.deleted ? "max-w-[88%] md:max-w-[82%] relative select-none" : `max-w-[88%] md:max-w-[82%] rounded-2xl overflow-hidden select-none ${
+            className={msg.kind === "sticker" && !msg.deleted ? "max-w-full relative select-none" : `max-w-full min-w-0 rounded-2xl overflow-hidden select-none ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
             }`}
           >
@@ -300,7 +299,7 @@ export function MessageBubble({
             initial={{ scale: 0, y: -4 }}
             animate={{ scale: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 18 }}
-            className="-mt-2 mr-2 flex items-center gap-1 flex-wrap max-w-[82%]"
+            className="-mt-2 mr-2 flex items-center gap-1 flex-wrap max-w-full"
           >
             {reactionEntries.map(([rid, users]) => {
               const mineToo = users.includes(selfId);
@@ -364,27 +363,6 @@ export function MessageBubble({
                         aria-label={r.label}
                       >
                         <Icon className={`size-5 ${r.color}`} />
-                      </motion.button>
-                    );
-                  })}
-                </div>
-                <div className={`flex items-center gap-0.5 mt-1 pt-1 border-t ${t.border}`}>
-                  {QUICK_EMOJIS.map((char, i) => {
-                    const rid = `e:${char}`;
-                    const active = (msg.reactions?.[rid] || []).includes(selfId);
-                    return (
-                      <motion.button
-                        key={char}
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.1 + i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
-                        whileHover={{ scale: 1.3, y: -3 }}
-                        whileTap={{ scale: 0.85 }}
-                        onClick={() => onReact(rid)}
-                        className={`p-1 rounded-full text-base leading-none ${active ? t.accentSoft : "hover:bg-white/10"}`}
-                        aria-label={`Reaccionar ${char}`}
-                      >
-                        {char}
                       </motion.button>
                     );
                   })}

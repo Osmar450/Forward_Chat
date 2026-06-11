@@ -106,7 +106,7 @@ export function StickerPanel({
         ))}
         {stickers.length === 0 && (
           <div className={`col-span-4 py-8 text-center text-xs ${t.textMuted}`}>
-            No tienes stickers aún. <br /> ¡Sube uno con el botón ✨!
+            No tienes stickers aún. <br /> ¡Sube uno con el botón de subir!
           </div>
         )}
       </div>
