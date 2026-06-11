@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Comic+Neue:wght@400;700&family=Silkscreen:wght@400;700&display=swap');
+
+:root {
+  --font-pixel: 'VT323', 'Courier New', monospace;
+  --font-pixel-display: 'Press Start 2P', 'Courier New', monospace;
+  --font-pixel-ui: 'Silkscreen', 'VT323', monospace;
+  --font-comic: 'Comic Neue', 'Comic Sans MS', cursive;
+}
+
+html, body {
+  font-family: var(--font-comic);
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-pixel-display);
+  letter-spacing: 0.04em;
+}
+
+.font-pixel {
+  font-family: var(--font-pixel);
+  font-size: 1.15em;
+}
+
+.font-pixel-ui {
+  font-family: var(--font-pixel-ui);
+  letter-spacing: 0.05em;
+}
+
+.font-comic {
+  font-family: var(--font-comic);
+}
+
+input, textarea, button {
+  font-family: inherit;
+}
