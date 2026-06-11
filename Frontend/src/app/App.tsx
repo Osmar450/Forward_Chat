@@ -404,6 +404,11 @@ export default function App() {
   const sendTextValue = (raw: string) => {
     const text = raw.trim();
     if (!text) return;
+    // Anti-flood local: si no hay slot, ni siquiera se pinta el optimista
+    if (!chat.consumeSendSlot()) {
+      toast.warning("Tranquilo: vas muy rápido. El botón se reactiva en unos segundos.");
+      return;
+    }
     const replyTo = buildReplyRef(replyingToRef.current);
     const chatKey = activeChatRef.current || LOBBY;
     // Optimistic UI: pintar de inmediato; el eco del servidor lo confirma vía clientId
@@ -460,6 +465,10 @@ export default function App() {
   };
 
   const sendSticker = (url: string) => {
+    if (!chat.consumeSendSlot()) {
+      toast.warning("Tranquilo: vas muy rápido. El botón se reactiva en unos segundos.");
+      return;
+    }
     const replyTo = buildReplyRef(replyingTo);
     if (!chat.emitMessage({ kind: "sticker", imageUrls: [url], replyTo })) {
       appendLocal({ authorId: selfId, kind: "sticker", imageUrl: url, replyTo });
@@ -861,6 +870,7 @@ export default function App() {
               participants={participants}
               draft={draft}
               canSend={canSend}
+              cooldownUntil={chat.cooldownUntil}
               typingNames={typingNames}
               onDraftChange={onDraftChange}
               onKeyDown={onDraftKeyDown}

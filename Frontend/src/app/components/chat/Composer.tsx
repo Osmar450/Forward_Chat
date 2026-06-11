@@ -19,6 +19,7 @@ export function Composer({
   participants,
   draft,
   canSend,
+  cooldownUntil,
   typingNames,
   onDraftChange,
   onKeyDown,
@@ -58,6 +59,8 @@ export function Composer({
   participants: Record<string, Participant>;
   draft: string;
   canSend: boolean;
+  /** Epoch ms hasta el que el envío está bloqueado por anti-flood (0 = libre) */
+  cooldownUntil: number;
   typingNames: string[];
   onDraftChange: (val: string) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
@@ -104,11 +107,36 @@ export function Composer({
     }
   }, [editingMsg]);
 
+  // Cooldown anti-flood: tick de 100ms mientras el envío esté bloqueado
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+  const cooldownTotalRef = useRef(1);
+  useEffect(() => {
+    const remaining = cooldownUntil - Date.now();
+    if (remaining <= 0) {
+      setCooldownLeft(0);
+      return;
+    }
+    cooldownTotalRef.current = remaining;
+    setCooldownLeft(remaining);
+    const interval = window.setInterval(() => {
+      const left = cooldownUntil - Date.now();
+      if (left <= 0) {
+        setCooldownLeft(0);
+        clearInterval(interval);
+      } else {
+        setCooldownLeft(left);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
+  const coolingDown = cooldownLeft > 0;
+
   const inputValue = isEditing ? editText : draft;
   const editChanged = isEditing && editText.trim().length > 0 && editText.trim() !== (editingMsg?.text || "");
-  const sendEnabled = isEditing ? editChanged : canSend;
+  const sendEnabled = (isEditing ? editChanged : canSend) && !coolingDown;
 
   const handleSubmit = () => {
+    if (coolingDown) return;
     if (isEditing) {
       if (editChanged) onSubmitEdit(editText);
       else onCancelEdit();
@@ -378,9 +406,11 @@ export function Composer({
               whileHover={sendEnabled ? { scale: 1.1 } : {}}
               whileTap={sendEnabled ? { scale: 0.85, rotate: isEditing ? 0 : -25 } : { scale: 0.95 }}
               animate={
-                sendEnabled
-                  ? { scale: [1, 1.05, 1], boxShadow: [`0 0 0 0 ${t.accentHex}55`, `0 0 0 8px ${t.accentHex}00`, `0 0 0 0 ${t.accentHex}00`] }
-                  : { rotate: isEditing ? 0 : -10, opacity: 0.5 }
+                coolingDown
+                  ? { rotate: 0, opacity: 1 }
+                  : sendEnabled
+                    ? { scale: [1, 1.05, 1], boxShadow: [`0 0 0 0 ${t.accentHex}55`, `0 0 0 8px ${t.accentHex}00`, `0 0 0 0 ${t.accentHex}00`] }
+                    : { rotate: isEditing ? 0 : -10, opacity: 0.5 }
               }
               transition={
                 sendEnabled
@@ -388,14 +418,40 @@ export function Composer({
                   : { type: "spring", stiffness: 400, damping: 18 }
               }
               onClick={handleSubmit}
-              disabled={!sendEnabled && !isEditing}
+              disabled={coolingDown || (!sendEnabled && !isEditing)}
               style={sendEnabled ? { background: `linear-gradient(135deg, ${t.accentHex}, ${t.accentHex}cc)` } : undefined}
               className={`shrink-0 size-11 rounded-full flex items-center justify-center text-white shadow-lg ${
-                sendEnabled ? "" : `${t.iconBtn} ${isEditing ? "" : "cursor-not-allowed"}`
+                sendEnabled ? "" : `${t.iconBtn} ${isEditing && !coolingDown ? "" : "cursor-not-allowed"}`
               }`}
-              aria-label={isEditing ? "Guardar edición" : "Enviar"}
+              aria-label={
+                coolingDown
+                  ? `Anti-flood: podrás enviar en ${Math.ceil(cooldownLeft / 1000)} segundos`
+                  : isEditing
+                    ? "Guardar edición"
+                    : "Enviar"
+              }
             >
-              {isEditing ? (
+              {coolingDown ? (
+                /* Cooldown anti-flood: contador pixel + microbarra de progreso */
+                <span className="flex flex-col items-center justify-center gap-1" aria-hidden="true">
+                  <span
+                    className={`font-pixel leading-none ${t.accentText}`}
+                    style={{ fontSize: "15px", fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {Math.ceil(cooldownLeft / 1000)}
+                  </span>
+                  <span className={`block w-6 h-[3px] rounded-full overflow-hidden ${t.isLight ? "bg-black/15" : "bg-white/15"}`}>
+                    <span
+                      className="block h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, (cooldownLeft / cooldownTotalRef.current) * 100))}%`,
+                        backgroundColor: t.accentHex,
+                        transition: "width 100ms linear",
+                      }}
+                    />
+                  </span>
+                </span>
+              ) : isEditing ? (
                 <Check className={`size-5 ${sendEnabled ? "text-white" : t.accentText}`} />
               ) : (
                 <Send className={`size-5 ${sendEnabled ? "text-white -translate-x-px" : t.accentText}`} fill={sendEnabled ? "currentColor" : "none"} />

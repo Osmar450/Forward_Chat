@@ -20,6 +20,29 @@ const SEARCH_PAGE_SIZE = 100;
 const searchLimiter = makeSocketRateLimiter({ windowMs: 5000, max: 15 });
 
 /**
+ * Anti-flood compartido por lobby y DMs (ventana fija por socket).
+ * Si se supera el límite emite 'rate limited' con el tiempo restante para
+ * que el cliente pinte el cooldown en el botón de enviar.
+ */
+function checkMessageRate(socket) {
+    const now = Date.now();
+    const userRateLimit = messageRateLimits.get(socket.id) || { count: 0, windowStart: now };
+    if (now - userRateLimit.windowStart > RATE_LIMIT_WINDOW) {
+        userRateLimit.count = 0;
+        userRateLimit.windowStart = now;
+    }
+    if (userRateLimit.count >= MAX_MESSAGES_PER_WINDOW) {
+        messageRateLimits.set(socket.id, userRateLimit);
+        const retryInMs = Math.max(1000, userRateLimit.windowStart + RATE_LIMIT_WINDOW - now);
+        socket.emit('rate limited', { retryInMs });
+        return false;
+    }
+    userRateLimit.count++;
+    messageRateLimits.set(socket.id, userRateLimit);
+    return true;
+}
+
+/**
  * Rich link previews: si el texto trae una URL, obtener metadatos OpenGraph
  * en segundo plano y avisar al scope cuando estén listos. Nunca bloquea el envío.
  */
@@ -82,18 +105,7 @@ function register(io, socket) {
     // ==========================================
     socket.on('chat message', async (msg) => {
         if (!socket.userId) return;
-        const now = Date.now();
-        const userRateLimit = messageRateLimits.get(socket.id) || { count: 0, windowStart: now };
-        if (now - userRateLimit.windowStart > RATE_LIMIT_WINDOW) {
-            userRateLimit.count = 0;
-            userRateLimit.windowStart = now;
-        }
-        if (userRateLimit.count >= MAX_MESSAGES_PER_WINDOW) {
-            socket.emit('error toast', { message: 'Demasiados mensajes. Espera un momento.' });
-            return;
-        }
-        userRateLimit.count++;
-        messageRateLimits.set(socket.id, userRateLimit);
+        if (!checkMessageRate(socket)) return;
 
         const user = getOrCreateUser(socket.userId);
         const text = typeof msg?.text === 'string' ? msg.text.substring(0, 2000) : '';
@@ -134,6 +146,7 @@ function register(io, socket) {
     // ==========================================
     socket.on('dm message', async (msg) => {
         if (!socket.userId) return;
+        if (!checkMessageRate(socket)) return;
         const to = msg?.to;
         if (!to || typeof to !== 'string') return;
 

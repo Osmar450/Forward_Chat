@@ -129,6 +129,10 @@ export interface ErrorToastPayload {
   message?: string;
 }
 
+export interface RateLimitedPayload {
+  retryInMs?: number;
+}
+
 /** Resuelve la clave de chat local a partir del scope del servidor. */
 export const chatKeyFromScope = (scope: string | undefined, selfId: string, lobbyKey: string): string => {
   const s = scope || lobbyKey;

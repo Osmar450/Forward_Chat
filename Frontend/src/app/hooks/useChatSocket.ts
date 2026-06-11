@@ -25,6 +25,7 @@ import {
   MessageEditedPayload,
   OlderMessagesPayload,
   ProfilePayload,
+  RateLimitedPayload,
   ReactionUpdatedPayload,
   SearchResultsPayload,
   ServerMessagePayload,
@@ -58,6 +59,10 @@ export interface ChatSocketApi {
   historyMore: Record<string, boolean>;
   /** Sugerencias de respuesta rápida (IA) por chat; se limpian al responder */
   smartReplies: Record<string, string[]>;
+  /** Epoch ms hasta el que el envío está en cooldown (anti-flood); 0 = libre */
+  cooldownUntil: number;
+  /** Consume un slot de envío; false si el anti-flood local lo bloquea */
+  consumeSendSlot: () => boolean;
   // ---- acciones ----
   setChats: React.Dispatch<React.SetStateAction<Record<string, Message[]>>>;
   setUnread: React.Dispatch<React.SetStateAction<Record<string, number>>>;
@@ -104,6 +109,7 @@ export function useChatSocket(options: {
   const [peerReads, setPeerReads] = useState<Record<string, number>>({});
   const [historyMore, setHistoryMore] = useState<Record<string, boolean>>({});
   const [smartReplies, setSmartReplies] = useState<Record<string, string[]>>({});
+  const [cooldownUntil, setCooldownUntil] = useState(0);
 
   // Refs: los handlers del socket nunca deben capturar estado obsoleto
   const socketRef = useRef<Socket | null>(null);
@@ -115,6 +121,9 @@ export function useChatSocket(options: {
   const isAtBottomRef = useRef(true);
   const everConnectedRef = useRef(false);
   const lastReadSentRef = useRef<Record<string, number>>({});
+  // Anti-flood local: espejo (un poco más estricto) del límite del servidor
+  const sendTimesRef = useRef<number[]>([]);
+  const cooldownUntilRef = useRef(0);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentRef = useRef(false);
   const onOwnEchoRef = useRef(options.onOwnEcho);
@@ -272,6 +281,17 @@ export function useChatSocket(options: {
 
     newSocket.on("error toast", (data: ErrorToastPayload) => {
       toast.error(data?.message || "Algo salió mal.");
+    });
+
+    // Anti-flood del servidor: activar el cooldown visual en el composer
+    newSocket.on("rate limited", (data: RateLimitedPayload) => {
+      const retryInMs = typeof data?.retryInMs === "number" && data.retryInMs > 0 ? data.retryInMs : 5000;
+      const until = Date.now() + retryInMs;
+      if (until > cooldownUntilRef.current) {
+        cooldownUntilRef.current = until;
+        setCooldownUntil(until);
+      }
+      toast.warning("Vas muy rápido. Espera un momento para volver a enviar.");
     });
 
     newSocket.on("message history", (history: ServerMessagePayload[]) => {
@@ -603,6 +623,27 @@ export function useChatSocket(options: {
     });
   }, []);
 
+  // Anti-flood del lado del cliente: 10 mensajes por ventana de 10s (el
+  // servidor permite 12; tropezar aquí primero evita el viaje al socket).
+  const CLIENT_RATE_WINDOW_MS = 10000;
+  const CLIENT_RATE_MAX = 10;
+
+  const consumeSendSlot = useCallback(() => {
+    const now = Date.now();
+    if (now < cooldownUntilRef.current) return false;
+    const recent = sendTimesRef.current.filter((ts) => now - ts < CLIENT_RATE_WINDOW_MS);
+    if (recent.length >= CLIENT_RATE_MAX) {
+      sendTimesRef.current = recent;
+      const until = recent[0] + CLIENT_RATE_WINDOW_MS;
+      cooldownUntilRef.current = until;
+      setCooldownUntil(until);
+      return false;
+    }
+    recent.push(now);
+    sendTimesRef.current = recent;
+    return true;
+  }, []);
+
   const searchMessages = useCallback((query: string) => {
     const chatKey = activeChatRef.current || LOBBY;
     const q = query.trim();
@@ -702,6 +743,8 @@ export function useChatSocket(options: {
     peerReads,
     historyMore,
     smartReplies,
+    cooldownUntil,
+    consumeSendSlot,
     setChats,
     setUnread,
     resetUnreadCount,
