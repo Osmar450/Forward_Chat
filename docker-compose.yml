@@ -1,0 +1,53 @@
+# Forward_Chat — simulación de producción local.
+# El backend persiste en JSON (data/) y archivos (uploads/): no requiere
+# base de datos ni caché externos; ambos directorios van en volúmenes.
+#
+#   docker compose up --build
+#   Frontend (nginx):  http://localhost:8080
+#   Backend (directo): http://localhost:3000
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forward-chat-backend:latest
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # GEMINI_API_KEY se inyecta desde el entorno o un .env local (nunca en la imagen)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    volumes:
+      - chat-data:/app/data
+      - chat-uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    image: forward-chat-frontend:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  chat-data:
+  chat-uploads:
