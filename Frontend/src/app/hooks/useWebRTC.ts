@@ -10,11 +10,29 @@ import { toast } from "sonner";
  * no toca nombres, login ni Forward Token.
  */
 
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
+// TURN (relay) configurable por entorno. Sin TURN, el P2P directo falla entre
+// teléfonos con datos móviles, NAT simétrico o wifi con aislamiento de clientes.
+// En Frontend/.env defina:
+//   VITE_TURN_URLS=turn:host:80,turn:host:443?transport=tcp
+//   VITE_TURN_USERNAME=usuario
+//   VITE_TURN_CREDENTIAL=clave
+// (p. ej. cuenta gratuita de metered.ca, o un coturn propio)
+function buildIceServers(): RTCConfiguration {
+  const iceServers: RTCIceServer[] = [
     { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-  ],
-};
+  ];
+  const turnUrls = (import.meta.env.VITE_TURN_URLS as string | undefined)
+    ?.split(",").map((s) => s.trim()).filter(Boolean);
+  if (turnUrls?.length) {
+    iceServers.push({
+      urls: turnUrls,
+      username: (import.meta.env.VITE_TURN_USERNAME as string | undefined) || "",
+      credential: (import.meta.env.VITE_TURN_CREDENTIAL as string | undefined) || "",
+    });
+  }
+  return { iceServers };
+}
+const ICE_SERVERS = buildIceServers();
 
 export type CallKind = "audio" | "video";
 export type CallState = "idle" | "incoming" | "outgoing" | "active";
@@ -160,7 +178,7 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
   }, []);
 
   useEffect(() => {
-    if (callState === "incoming") startRinging();
+    if (callState === "incoming" || callState === "outgoing") startRinging();
     else stopRinging();
   }, [callState, startRinging, stopRinging]);
 
@@ -250,8 +268,24 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       const stream = e.streams[0] || new MediaStream([e.track]);
       setRemoteStreams((prev) => ({ ...prev, [peerId]: stream }));
     };
+    let connectedOnce = false;
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[rtc] ${peerId} ICE: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        if (!connectedOnce) {
+          connectedOnce = true;
+          toast.success("Audio conectado 🎧");
+        }
+      } else if (pc.iceConnectionState === "failed") {
+        toast.error("La red bloquea la conexión de audio. Se necesita un servidor TURN (VITE_TURN_URLS). 🌐");
+        try { (pc as any).restartIce?.(); } catch { /* navegador viejo */ }
+      }
+    };
     pc.onconnectionstatechange = () => {
-      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+      console.log(`[rtc] ${peerId} conn: ${pc.connectionState}`);
+      // "disconnected" suele ser transitorio en redes móviles (cambio de
+      // antena, wifi inestable) y se recupera solo: NO terminar la llamada.
+      if (["failed", "closed"].includes(pc.connectionState)) {
         removePeer(peerId);
         // En DM 1:1 la caída del peer termina la llamada
         if (callScopeRef.current === peerId) {

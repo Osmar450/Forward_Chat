@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Phone, PhoneOff, Video } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import type { Participant } from "../../lib/chat";
-import type { WebRTCApi } from "../../lib/useWebRTC";
+import type { WebRTCApi } from "../../hooks/useWebRTC";
 
 export function IncomingCallModal({
   rtc,

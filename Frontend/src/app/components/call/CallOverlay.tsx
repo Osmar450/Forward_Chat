@@ -1,9 +1,36 @@
 import React, { useEffect, useRef, useState } from "react";
+
+/** Fuerza la reproducción de un elemento de media; si el navegador bloquea
+ *  el autoplay, reintenta en el siguiente toque/click del usuario. */
+function playWithGestureFallback(el: HTMLMediaElement) {
+  let removed = false;
+  const resume = () => {
+    removed = true;
+    el.play().catch(() => {});
+  };
+  el.play().catch(() => {
+    if (!removed) window.addEventListener("pointerdown", resume, { once: true });
+  });
+  return () => window.removeEventListener("pointerdown", resume);
+}
+
+/** Reproduce el audio de un stream remoto. Usa <audio> para evitar
+ *  el bloqueo de autoplay que Safari aplica a <video display:none>. */
+function RemoteAudio({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== stream) el.srcObject = stream;
+    return playWithGestureFallback(el);
+  }, [stream]);
+  return <audio ref={ref} autoPlay playsInline />;
+}
 import { AnimatePresence, motion } from "motion/react";
 import { Maximize2, Mic, MicOff, Minimize2, PhoneOff, Video as VideoIcon, VideoOff } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import type { Participant } from "../../lib/chat";
-import type { WebRTCApi } from "../../lib/useWebRTC";
+import type { WebRTCApi } from "../../hooks/useWebRTC";
 
 /** Asigna el MediaStream al elemento sin re-crear el nodo. */
 function MediaVideo({
@@ -19,9 +46,10 @@ function MediaVideo({
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
-    if (ref.current && ref.current.srcObject !== stream) {
-      ref.current.srcObject = stream;
-    }
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== stream) el.srcObject = stream;
+    return playWithGestureFallback(el);
   }, [stream]);
   return (
     <video
@@ -236,10 +264,12 @@ export function CallOverlay({
 
   return (
     <>
-      {/* Audio de TODOS los peers remotos: siempre montado (PiP o fullscreen) */}
-      <div className="hidden">
+      {/* Audio de TODOS los peers remotos. Se usa <audio> en un contenedor
+          de tamaño cero (no display:none) porque Safari bloquea autoplay
+          en elementos de video/audio con display:none. */}
+      <div aria-hidden="true" style={{ position: "fixed", width: 0, height: 0, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
         {remoteEntries.map(([id, stream]) => (
-          <MediaVideo key={`audio-${id}`} stream={stream} className="hidden" />
+          <RemoteAudio key={`audio-${id}`} stream={stream} />
         ))}
       </div>
 

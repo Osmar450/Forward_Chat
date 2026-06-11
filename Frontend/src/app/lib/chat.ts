@@ -1,6 +1,12 @@
 import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry } from "lucide-react";
 import type React from "react";
 
+export const BOT_ID = "forwardbot";
+export const LOBBY = "lobby";
+
+/** Clave de conversación DM en el servidor: ids ordenados unidos por "|". */
+export const dmScopeOf = (a: string, b: string) => [a, b].sort().join("|");
+
 export type Status = "online" | "idle" | "dnd" | "invisible" | "offline";
 
 export type ReactionKey = "heart" | "thumb" | "laugh" | "sad" | "fire" | "angry";

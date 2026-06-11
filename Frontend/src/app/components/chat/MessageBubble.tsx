@@ -200,7 +200,7 @@ export function MessageBubble({
               ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker" ? { borderLeft: `3px solid ${author.color}` } : {}),
               touchAction: "pan-y",
             }}
-            className={msg.kind === "sticker" && !msg.deleted ? "max-w-[82%] relative select-none" : `max-w-[82%] rounded-2xl overflow-hidden select-none ${
+            className={msg.kind === "sticker" && !msg.deleted ? "max-w-[88%] md:max-w-[82%] relative select-none" : `max-w-[88%] md:max-w-[82%] rounded-2xl overflow-hidden select-none ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
             }`}
           >
@@ -235,7 +235,15 @@ export function MessageBubble({
                   </div>
                 )}
                 {msg.kind === "text" && (
-                  <div className={`px-4 ${showAuthor ? "" : "pt-2"} font-comic ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>{formatText(msg.text)}</div>
+                  /* Texto + hora estilo WhatsApp: en mensajes cortos comparten
+                     línea; en largos la hora baja sola alineada a la derecha. */
+                  <div className={`px-3.5 ${showAuthor ? "pt-0.5" : "pt-2"} pb-1.5 flex flex-wrap items-end gap-x-2`}>
+                    <div className={`min-w-0 font-comic font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>{formatText(msg.text)}</div>
+                    <div
+                      className={`ml-auto font-pixel whitespace-nowrap opacity-80 ${isMine ? "text-white/70" : t.textMuted}`}
+                      style={{ fontSize: "11px", lineHeight: "1.4" }}
+                    >{msg.time}</div>
+                  </div>
                 )}
                 {msg.kind === "image" && msg.imageUrl && (
                   <div className="px-2 pt-1">
@@ -274,7 +282,12 @@ export function MessageBubble({
                 {msg.kind === "audio" && (
                   <AudioPlayer url={msg.audioUrl || ""} duration={msg.audioDuration || 0} theme={t} mine={isMine} />
                 )}
-                <div className={`font-pixel text-[10px] px-2 pb-1 pt-0.5 text-right ${msg.kind === "sticker" ? `${t.textMuted} drop-shadow-sm` : isMine ? "text-white/70" : t.textMuted}`}>{msg.time}</div>
+                {msg.kind !== "text" && (
+                  <div
+                    style={{ fontSize: "11px" }}
+                    className={`font-pixel px-2.5 pb-1 pt-0.5 text-right whitespace-nowrap opacity-80 ${msg.kind === "sticker" ? `${t.textMuted} drop-shadow-sm` : isMine ? "text-white/70" : t.textMuted}`}
+                  >{msg.time}</div>
+                )}
               </>
             )}
           </motion.div>
