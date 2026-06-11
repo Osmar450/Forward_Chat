@@ -233,7 +233,11 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
       return stream;
     } catch (err: any) {
       if (err?.name === "NotAllowedError" || err?.name === "SecurityError") {
-        toast.error(kind === "video" ? "Permiso de cámara/micrófono denegado" : "Permiso de micrófono denegado");
+        toast.error(
+          (kind === "video" ? "Permiso de cámara/micrófono denegado." : "Permiso de micrófono denegado.") +
+            " Si lo rechazaste antes, actívalo en Ajustes del sistema → Apps → Forward_Chat → Permisos.",
+          { duration: 9000 }
+        );
       } else if (err?.name === "NotFoundError") {
         toast.error(kind === "video" ? "No se encontró cámara o micrófono." : "No se encontró micrófono.");
       } else {

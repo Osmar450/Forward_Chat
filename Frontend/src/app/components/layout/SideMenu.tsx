@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Copy, KeyRound, Leaf, Mic, Palette, Pencil, Trash2, User, UserPlus, Video, Wifi, WifiOff } from "lucide-react";
+import { Copy, KeyRound, Leaf, Mic, Palette, Pencil, Trash2, Type, User, UserPlus, Video, Wifi, WifiOff } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
@@ -72,6 +72,7 @@ export function SideMenu({
   onEditProfile,
   onOpenFriends,
   onOpenThemes,
+  onOpenFonts,
   onToggleMic,
   onToggleCam,
   onToggleEco,
@@ -91,6 +92,7 @@ export function SideMenu({
   onEditProfile: () => void;
   onOpenFriends: () => void;
   onOpenThemes: () => void;
+  onOpenFonts: () => void;
   onToggleMic: () => void;
   onToggleCam: () => void;
   onToggleEco: () => void;
@@ -160,6 +162,7 @@ export function SideMenu({
               <MenuItem icon={<User className="size-5" />} label="Editar perfil" onClick={onEditProfile} mutedColor={t.textMuted} />
               <MenuItem icon={<UserPlus className="size-5" />} label="Amigos y Forward Token" onClick={onOpenFriends} mutedColor={t.textMuted} />
               <MenuItem icon={<Palette className="size-5" />} label="Temas" onClick={onOpenThemes} mutedColor={t.textMuted} />
+              <MenuItem icon={<Type className="size-5" />} label="Fuentes" onClick={onOpenFonts} mutedColor={t.textMuted} />
 
               <div className={`px-3 pt-3 pb-1 text-[10px] font-pixel-ui tracking-widest ${t.textMuted}`}>PERMISOS DE LLAMADAS</div>
               <PermissionRow

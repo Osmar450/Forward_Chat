@@ -14,6 +14,10 @@ import {
   downscaleImage,
   fmtClock,
   messagePreview,
+  CHAT_FONTS,
+  ChatFontKey,
+  DEFAULT_CHAT_FONT,
+  chatFontFamily,
 } from "./lib/chat";
 import { useChatSocket } from "./hooks/useChatSocket";
 import { useWebRTC } from "./hooks/useWebRTC";
@@ -33,6 +37,7 @@ const ProfileViewModal = React.lazy(() => import("./components/modals/ProfileVie
 const ProfileEditModal = React.lazy(() => import("./components/modals/ProfileEditModal").then((m) => ({ default: m.ProfileEditModal })));
 const CallOverlay = React.lazy(() => import("./components/call/CallOverlay").then((m) => ({ default: m.CallOverlay })));
 const IncomingCallModal = React.lazy(() => import("./components/call/IncomingCallModal").then((m) => ({ default: m.IncomingCallModal })));
+const FontsModal = React.lazy(() => import("./components/modals/FontsModal").then((m) => ({ default: m.FontsModal })));
 
 /**
  * App: composición y estado de UI. La lógica de tiempo real vive en
@@ -75,6 +80,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("chatEcoMode", ecoMode ? "1" : "0");
   }, [ecoMode]);
+
+  // Tipografía de las burbujas (menú "Fuentes")
+  const [chatFont, setChatFont] = useState<ChatFontKey>(() => {
+    try {
+      const saved = localStorage.getItem("chatFont") as ChatFontKey;
+      return saved && CHAT_FONTS.some((f) => f.key === saved) ? saved : DEFAULT_CHAT_FONT;
+    } catch {
+      return DEFAULT_CHAT_FONT;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem("chatFont", chatFont);
+  }, [chatFont]);
   useEffect(() => {
     localStorage.setItem("chatPermissions", JSON.stringify(perms));
   }, [perms]);
@@ -87,6 +105,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
+  const [showFonts, setShowFonts] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
@@ -716,7 +735,9 @@ export default function App() {
           // Notch / cámara / barra de estado en móviles (Capacitor y PWA)
           paddingTop: "env(safe-area-inset-top)",
           paddingBottom: "env(safe-area-inset-bottom)",
-        }}
+          // Tipografía elegida para las burbujas (ver .font-bubble)
+          ["--bubble-font" as string]: chatFontFamily(chatFont),
+        } as React.CSSProperties}
         onDragEnter={onDragEnter}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -931,6 +952,7 @@ export default function App() {
           onEditProfile={() => { setMenuOpen(false); setShowProfile(true); }}
           onOpenFriends={() => { setMenuOpen(false); setShowFriends(true); }}
           onOpenThemes={() => { setMenuOpen(false); setShowThemes(true); }}
+          onOpenFonts={() => { setMenuOpen(false); setShowFonts(true); }}
           onToggleMic={() => {
             setPerms((p) => {
               const next = { ...p, mic: !p.mic };
@@ -957,6 +979,14 @@ export default function App() {
         />
 
         <React.Suspense fallback={null}>
+        <FontsModal
+          open={showFonts}
+          theme={t}
+          current={chatFont}
+          onSelect={(key) => setChatFont(key)}
+          onClose={() => setShowFonts(false)}
+        />
+
         <ThemesModal
           open={showThemes}
           theme={theme}

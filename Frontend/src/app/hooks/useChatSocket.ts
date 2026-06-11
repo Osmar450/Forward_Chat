@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
 import {
+  BOT_AVATAR,
   BOT_ID,
   LOBBY,
   Message,
@@ -150,7 +151,8 @@ export function useChatSocket(options: {
         id,
         name: data.name ?? existing?.name ?? id,
         color: data.color ?? existing?.color ?? (id === BOT_ID ? "#8B5CF6" : colorForUser(id)),
-        avatar: data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
+        // El bot SIEMPRE usa el PNG empaquetado (el SVG remoto falla en Android)
+        avatar: id === BOT_ID ? BOT_AVATAR : data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
         banner: data.banner !== undefined ? data.banner : existing?.banner ?? null,
         bannerColor: data.bannerColor !== undefined ? data.bannerColor : existing?.bannerColor ?? null,
         bio: data.bio !== undefined ? data.bio : existing?.bio ?? "",

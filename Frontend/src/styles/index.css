@@ -24,6 +24,11 @@
 }
 
 @layer utilities {
+  /* Tipografía de las burbujas: la elige el usuario en el menú "Fuentes" */
+  .font-bubble {
+    font-family: var(--bubble-font, var(--font-comic));
+  }
+
   /* Estética pixel-art sutil: bordes definidos y sombras sólidas (sin blur) */
   .pixel-card {
     box-shadow: 4px 4px 0 0 rgb(0 0 0 / 0.3);

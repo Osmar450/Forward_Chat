@@ -1,16 +1,16 @@
-const { store, scheduleSave } = require('./store');
+﻿const { store, scheduleSave } = require('./store');
 
 // ==========================================
-// FRIEND TOKEN: identificador único que simula
-// ser un "número" (formato FWD-XXXX-XXXX)
+// FRIEND TOKEN: identificador Ãºnico que simula
+// ser un "nÃºmero" (formato FWD-XXXX-XXXX)
 // ==========================================
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin caracteres ambiguos (0/O, 1/I)
 
 // ==========================================
-// ÍNDICES EN MEMORIA (lookups O(1) sobre el store JSON)
-// - friendCodeIndex: código -> userId (evita escanear todos los usuarios)
+// ÃNDICES EN MEMORIA (lookups O(1) sobre el store JSON)
+// - friendCodeIndex: cÃ³digo -> userId (evita escanear todos los usuarios)
 // - friendshipIndex: "a|b" ordenado -> true (evita escanear todas las amistades)
-// Se reconstruyen al cargar y se mantienen en cada mutación.
+// Se reconstruyen al cargar y se mantienen en cada mutaciÃ³n.
 // ==========================================
 const friendCodeIndex = new Map();
 const friendshipIndex = new Set();
@@ -93,7 +93,7 @@ function publicProfile(user, isOnline) {
     };
 }
 
-// Contador perezoso: se inicializa en el primer uso, cuando el store ya cargó
+// Contador perezoso: se inicializa en el primer uso, cuando el store ya cargÃ³
 let anonymousCounter = null;
 const generateAnonymousId = () => {
     if (anonymousCounter === null) anonymousCounter = Object.keys(store.users).length + 1;
@@ -108,11 +108,11 @@ const BOT_ID = 'forwardbot';
 const BOT_PROFILE = {
     userId: BOT_ID,
     name: 'ForwardBot',
-    avatar: '/assets/Forwardbot_profile.svg',
+    avatar: '/assets/Forward_Bot.png',
     color: '#8B5CF6',
     banner: null,
     bannerColor: '#8B5CF6',
-    bio: 'Asistente de IA de Forward_Chat. Menciona @ForwardBot en el lobby o escríbeme por privado.',
+    bio: 'Asistente de IA de Forward_Chat. Menciona @ForwardBot en el lobby o escrÃ­beme por privado.',
     status: 'online',
     isBot: true
 };

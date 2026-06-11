@@ -1,7 +1,10 @@
 import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry } from "lucide-react";
 import type React from "react";
+// Avatar del bot empaquetado en el bundle (el SVG remoto no renderiza en Android)
+import botAvatarUrl from "../../assets/Forward_Bot.png";
 
 export const BOT_ID = "forwardbot";
+export const BOT_AVATAR: string = botAvatarUrl;
 export const LOBBY = "lobby";
 
 /** Clave de conversación DM en el servidor: ids ordenados unidos por "|". */
@@ -85,6 +88,28 @@ export const BANNER_COLORS = [
 
 /** Reacciones de emoji rápidas del selector (long-press / tap en burbuja). */
 export const QUICK_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🙏", "😡"];
+
+// ==========================================
+// FUENTES DE LAS BURBUJAS (configurables en el menú "Fuentes")
+// Pilas con respaldo de sistema: funcionan offline en el APK.
+// ==========================================
+export type ChatFontKey = "moderna" | "android" | "droid" | "comic" | "cyber" | "retro" | "arcade" | "terminal";
+
+export const CHAT_FONTS: { key: ChatFontKey; label: string; family: string; hint: string }[] = [
+  { key: "moderna", label: "Moderna", family: "'Inter', 'Segoe UI', Roboto, system-ui, sans-serif", hint: "Limpia y actual (Inter)" },
+  { key: "android", label: "Android Clásica", family: "Roboto, 'Noto Sans', 'Segoe UI', system-ui, sans-serif", hint: "La de siempre (Roboto)" },
+  { key: "droid", label: "Droid 2016", family: "'Droid Sans', 'Roboto Condensed', Roboto, sans-serif", hint: "Nostalgia Android" },
+  { key: "comic", label: "Cómic", family: "var(--font-comic)", hint: "Divertida y redonda" },
+  { key: "cyber", label: "Cyber Pixel", family: "var(--font-pixel)", hint: "Terminal retro (VT323)" },
+  { key: "retro", label: "Retro Game", family: "var(--font-pixel-display)", hint: "Arcade 8-bit" },
+  { key: "arcade", label: "Arcade", family: "var(--font-pixel-ui)", hint: "Pixel legible (Silkscreen)" },
+  { key: "terminal", label: "Terminal", family: "'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace", hint: "Monoespaciada de código" },
+];
+
+export const DEFAULT_CHAT_FONT: ChatFontKey = "moderna";
+
+export const chatFontFamily = (key: string): string =>
+  (CHAT_FONTS.find((f) => f.key === key) || CHAT_FONTS[0]).family;
 
 export const AUDIO_MIME_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
 

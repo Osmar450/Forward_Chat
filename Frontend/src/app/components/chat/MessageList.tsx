@@ -211,6 +211,16 @@ export function MessageList({
     return peerReadAt >= m.timestamp ? "read" : "sent";
   };
 
+  // Al abrir un chat, saltar instantáneamente al último mensaje (doble rAF:
+  // espera al layout de burbujas e imágenes antes de medir).
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ block: "end" }))
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [activeChat, hasMessages]);
+
   return (
     <>
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-3">
@@ -291,6 +301,8 @@ export function MessageList({
             </AnimatePresence>
           </>
         )}
+        {/* Ancla para el auto-scroll al fondo */}
+        <div ref={bottomRef} aria-hidden="true" />
       </div>
 
       {/* Botón ir abajo */}

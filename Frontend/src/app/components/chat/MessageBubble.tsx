@@ -4,7 +4,6 @@ import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Smile, Sparkles, Star, T
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
 import {
-  EDIT_WINDOW_MS,
   Message,
   Participant,
   QUICK_EMOJIS,
@@ -88,10 +87,10 @@ function MessageBubbleInner({
   const SWIPE_TRIGGER = 56;
   const SWIPE_MAX = 80;
 
-  // Editar/borrar solo dentro de la ventana de 15 min (el servidor la impone igual)
-  const withinEditWindow = Date.now() - msg.timestamp < EDIT_WINDOW_MS;
-  const canEdit = isMine && !msg.deleted && msg.kind === "text" && withinEditWindow;
-  const canDelete = isMine && !msg.deleted && withinEditWindow;
+  // Acciones siempre visibles para mensajes propios; la ventana de 15 min
+  // la impone el servidor (si expiró, el usuario recibe un aviso claro).
+  const canEdit = isMine && !msg.deleted && msg.kind === "text";
+  const canDelete = isMine && !msg.deleted;
 
   const startLongPress = () => {
     longPressedRef.current = false;
@@ -116,9 +115,16 @@ function MessageBubbleInner({
     if (!interactiveTargetRef.current) startLongPress();
   };
 
+  // En Android el long-press dispara contextmenu (y a veces cancela los
+  // pointer events antes de los 400ms del timer). Lo usamos como segunda vía
+  // para abrir el menú de reacciones; el guard evita el doble toggle.
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!msg.deleted) onReply(msg);
+    if (!msg.deleted && !longPressedRef.current) {
+      longPressedRef.current = true;
+      cancelLongPress();
+      onTogglePicker(msg.id);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -280,19 +286,22 @@ function MessageBubbleInner({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            onPointerCancel={handlePointerLeave}
             onPointerLeave={handlePointerLeave}
             onContextMenu={handleContextMenu}
             style={{
               ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker" ? { borderLeft: `3px solid ${author.color}` } : {}),
               touchAction: "pan-y",
+              WebkitTouchCallout: "none",
+              WebkitUserSelect: "none",
+              userSelect: "none",
             }}
             className={`${msg.kind === "sticker" && !msg.deleted ? `max-w-full relative select-none ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden select-none ${msg.pending ? "opacity-60" : ""} ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
             }`} ${isSearchCurrent ? `ring-2 ${t.accentRing} ring-offset-1 ring-offset-transparent` : ""}`}
           >
             {msg.deleted ? (
-              <div className={`flex items-center gap-2 px-4 py-2.5 ${t.textMuted} font-comic`}>
+              <div className={`flex items-center gap-2 px-4 py-2.5 ${t.textMuted} font-bubble`}>
                 <Ban className="size-4" />
                 <span>Mensaje eliminado</span>
               </div>
@@ -332,7 +341,7 @@ function MessageBubbleInner({
                   /* Texto + hora estilo WhatsApp: en mensajes cortos comparten
                      línea; en largos la hora baja sola alineada a la derecha. */
                   <div className={`px-3.5 ${showAuthor ? "pt-0.5" : "pt-2"} pb-1.5 flex flex-wrap items-end gap-x-2`}>
-                    <div className={`min-w-0 font-comic font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>
+                    <div className={`min-w-0 font-bubble font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>
                       {renderBody(msg.text)}
                       {msg.streaming && (
                         <motion.span
@@ -389,7 +398,7 @@ function MessageBubbleInner({
                   <div className="px-2 pt-1">
                     <img src={msg.imageUrl} alt={msg.text || "Imagen adjunta"} className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
                     {msg.text && (
-                      <div className={`px-2 pt-2 font-comic ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{renderBody(msg.text)}</div>
+                      <div className={`px-2 pt-2 font-bubble ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{renderBody(msg.text)}</div>
                     )}
                   </div>
                 )}
@@ -529,8 +538,8 @@ function MessageBubbleInner({
                     );
                   })}
                 </div>
-                {/* Acciones rápidas (en móvil no hay botones de hover) */}
-                <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${t.border} md:hidden`}>
+                {/* Acciones: responder / editar / eliminar (integradas al menú) */}
+                <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${t.border}`}>
                   <button
                     onClick={() => {
                       onReply(msg);
