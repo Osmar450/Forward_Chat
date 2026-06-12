@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Copy, KeyRound, Leaf, Mic, Palette, Pencil, Trash2, Type, User, UserPlus, Video, Wifi, WifiOff } from "lucide-react";
+import { Bell, Copy, KeyRound, Leaf, Mic, Palette, Pencil, Rocket, Settings, Trash2, Type, User, UserPlus, Video, Wifi, WifiOff } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
@@ -74,6 +74,7 @@ export function SideMenu({
   onOpenThemes,
   onOpenFonts,
   onToggleMic,
+  onToggleNotif,
   onToggleCam,
   onToggleEco,
   onClearChat,
@@ -82,7 +83,7 @@ export function SideMenu({
   open: boolean;
   theme: ThemeTokens;
   me: Participant;
-  perms: { mic: boolean; cam: boolean };
+  perms: { mic: boolean; cam: boolean; notif: boolean };
   ecoMode: boolean;
   friendCode: string;
   latencyMs: number | null;
@@ -94,6 +95,7 @@ export function SideMenu({
   onOpenThemes: () => void;
   onOpenFonts: () => void;
   onToggleMic: () => void;
+  onToggleNotif: () => void;
   onToggleCam: () => void;
   onToggleEco: () => void;
   onClearChat: () => void;
@@ -164,7 +166,9 @@ export function SideMenu({
               <MenuItem icon={<Palette className="size-5" />} label="Temas" onClick={onOpenThemes} mutedColor={t.textMuted} />
               <MenuItem icon={<Type className="size-5" />} label="Fuentes" onClick={onOpenFonts} mutedColor={t.textMuted} />
 
-              <div className={`px-3 pt-3 pb-1 text-[10px] font-pixel-ui tracking-widest ${t.textMuted}`}>PERMISOS DE LLAMADAS</div>
+              <div className={`px-3 pt-3 pb-1 flex items-center gap-1.5 text-[10px] font-pixel-ui tracking-widest ${t.textMuted}`}>
+                <Settings className="size-3.5" /> PERMISOS
+              </div>
               <PermissionRow
                 icon={<Mic className="size-5" />}
                 label="Micrófono"
@@ -179,6 +183,19 @@ export function SideMenu({
                 theme={t}
                 onToggle={onToggleCam}
               />
+              <PermissionRow
+                icon={<Bell className="size-5" />}
+                label="Notificaciones"
+                enabled={perms.notif}
+                theme={t}
+                onToggle={onToggleNotif}
+              />
+              <div className={`mx-3 mt-1.5 mb-1 p-3 rounded-xl ${t.accentSoft} border ${t.border} flex items-start gap-2`}>
+                <Rocket className={`size-4 shrink-0 mt-0.5 ${t.accentText}`} />
+                <span className={`text-[11px] leading-relaxed ${t.textMuted}`}>
+                  Habilita los permisos necesarios para desbloquear el máximo potencial de la app y disfrutar de una experiencia sin límites.
+                </span>
+              </div>
 
               <MenuItem
                 icon={<Leaf className={`size-5 ${ecoMode ? "text-emerald-400" : ""}`} />}

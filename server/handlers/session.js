@@ -1,6 +1,6 @@
 const { store, scheduleSave } = require('../store');
-const { getOrCreateUser, publicProfile, generateAnonymousId, sanitizeMedia, friendIdsOf, BOT_PROFILE } = require('../users');
-const { addUserSocket, removeUserSocket } = require('../presence');
+const { getOrCreateUser, publicProfile, generateAnonymousId, sanitizeMedia, cleanText, friendIdsOf, BOT_PROFILE } = require('../users');
+const { addUserSocket, removeUserSocket, blocksByUser, blockersOf } = require('../presence');
 const { emitAll, emitToUser, broadcastPresence, sendFriendsList } = require('../realtime');
 const { voiceChannels, dmCallPeers, broadcastVoiceParticipants } = require('./calls');
 const { messageRateLimits, HISTORY_PAGE_SIZE } = require('./messages');
@@ -30,8 +30,25 @@ function register(io, socket) {
         })));
         socket.emit('history meta', { with: 'lobby', hasMore: store.lobby.length > lobbyPage.length });
         sendFriendsList(user.userId);
+        // Quiénes me bloquearon (mi cliente oculta sus avatares/banners)
+        socket.emit('blocked by', { ids: blockersOf(user.userId) });
         broadcastPresence();
     };
+
+    // Lista de bloqueados del usuario: oculta su avatar a los bloqueados
+    socket.on('set blocks', (payload) => {
+        if (!socket.userId) return;
+        const ids = Array.isArray(payload?.ids)
+            ? payload.ids.filter(x => typeof x === 'string' && x.length <= 32).slice(0, 200)
+            : [];
+        const prev = blocksByUser.get(socket.userId) || new Set();
+        const next = new Set(ids);
+        blocksByUser.set(socket.userId, next);
+        // Notificar solo a los afectados (entraron o salieron de la lista)
+        new Set([...prev, ...next]).forEach(uid => {
+            emitToUser(uid, 'blocked by', { ids: blockersOf(uid) });
+        });
+    });
 
     // Solo IDs alfanuméricos: evita inyectar separadores de scope ("|"),
     // rutas o ids reservados a través del localStorage del cliente.
@@ -45,14 +62,14 @@ function register(io, socket) {
         const user = getOrCreateUser(userId);
 
         // El cliente puede traer datos más recientes guardados en localStorage
-        if (profile?.name && typeof profile.name === 'string') user.name = profile.name.substring(0, 30);
+        if (profile?.name && typeof profile.name === 'string') user.name = cleanText(profile.name, 30);
         if (profile?.color) user.color = profile.color;
         const avatar = sanitizeMedia(profile?.avatar);
         if (avatar) user.avatar = avatar;
         const banner = sanitizeMedia(profile?.banner);
         if (banner) user.banner = banner;
         if (profile?.bannerColor) user.bannerColor = String(profile.bannerColor).substring(0, 20);
-        if (typeof profile?.bio === 'string') user.bio = profile.bio.substring(0, 200);
+        if (typeof profile?.bio === 'string') user.bio = cleanText(profile.bio, 200);
         if (profile?.status) user.status = profile.status;
         scheduleSave();
 
@@ -69,12 +86,12 @@ function register(io, socket) {
     socket.on('set profile', (profile) => {
         if (!socket.userId) return;
         const user = getOrCreateUser(socket.userId);
-        if (typeof profile?.name === 'string' && profile.name.trim()) user.name = profile.name.trim().substring(0, 30);
+        if (typeof profile?.name === 'string' && profile.name.trim()) user.name = cleanText(profile.name.trim(), 30);
         if (profile?.color) user.color = profile.color;
         if ('avatar' in (profile || {})) user.avatar = sanitizeMedia(profile.avatar);
         if ('banner' in (profile || {})) user.banner = sanitizeMedia(profile.banner);
         if ('bannerColor' in (profile || {})) user.bannerColor = profile.bannerColor ? String(profile.bannerColor).substring(0, 20) : null;
-        if (typeof profile?.bio === 'string') user.bio = profile.bio.substring(0, 200);
+        if (typeof profile?.bio === 'string') user.bio = cleanText(profile.bio, 200);
         if (profile?.status && ['online', 'idle', 'dnd', 'invisible'].includes(profile.status)) user.status = profile.status;
         scheduleSave();
 

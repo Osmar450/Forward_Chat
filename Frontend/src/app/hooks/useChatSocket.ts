@@ -139,6 +139,9 @@ export function useChatSocket(options: {
   // ==========================================
   // HELPERS
   // ==========================================
+  // Usuarios que me bloquearon: sus avatares/banners no se muestran
+  const blockedByRef = useRef<Set<string>>(new Set());
+
   const upsertParticipant = useCallback((data: ProfilePayload & { id?: string }, opts: { allowSelf?: boolean } = {}) => {
     const id = data.userId || data.id;
     if (!id) return;
@@ -151,8 +154,9 @@ export function useChatSocket(options: {
         id,
         name: data.name ?? existing?.name ?? id,
         color: data.color ?? existing?.color ?? (id === BOT_ID ? "#8B5CF6" : colorForUser(id)),
-        // El bot SIEMPRE usa el PNG empaquetado (el SVG remoto falla en Android)
-        avatar: id === BOT_ID ? BOT_AVATAR : data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
+        // El bot SIEMPRE usa el PNG empaquetado (el SVG remoto falla en Android).
+        // Si ese usuario me bloqueó, su avatar se oculta (privacidad).
+        avatar: id === BOT_ID ? BOT_AVATAR : blockedByRef.current.has(id) ? null : data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
         banner: data.banner !== undefined ? data.banner : existing?.banner ?? null,
         bannerColor: data.bannerColor !== undefined ? data.bannerColor : existing?.bannerColor ?? null,
         bio: data.bio !== undefined ? data.bio : existing?.bio ?? "",
@@ -255,6 +259,19 @@ export function useChatSocket(options: {
     });
 
     newSocket.on("bot profile", (data: ProfilePayload) => upsertParticipant(data));
+
+    // Usuarios que ME bloquearon: su avatar/banner se sustituye por el genérico
+    newSocket.on("blocked by", (payload: { ids?: string[] }) => {
+      const ids = new Set(Array.isArray(payload?.ids) ? payload.ids : []);
+      blockedByRef.current = ids;
+      setParticipants((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => {
+          if (next[id]) next[id] = { ...next[id], avatar: null, banner: null };
+        });
+        return next;
+      });
+    });
 
     newSocket.on("users online", (list: ProfilePayload[]) => {
       if (!Array.isArray(list)) return;

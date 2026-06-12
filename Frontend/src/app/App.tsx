@@ -66,11 +66,11 @@ export default function App() {
     }
   });
   // Permisos "lazy": nada se solicita al cargar; solo al llamar, y respetando estos toggles
-  const [perms, setPerms] = useState<{ mic: boolean; cam: boolean }>(() => {
+  const [perms, setPerms] = useState<{ mic: boolean; cam: boolean; notif: boolean }>(() => {
     try {
-      return { mic: true, cam: true, ...JSON.parse(localStorage.getItem("chatPermissions") || "{}") };
+      return { mic: true, cam: true, notif: true, ...JSON.parse(localStorage.getItem("chatPermissions") || "{}") };
     } catch {
-      return { mic: true, cam: true };
+      return { mic: true, cam: true, notif: true };
     }
   });
   const permsRef = useRef(perms);
@@ -203,6 +203,12 @@ export default function App() {
   useEffect(() => { localStorage.setItem("chatNicknames", JSON.stringify(nicknames)); }, [nicknames]);
   useEffect(() => { localStorage.setItem("chatBlocked", JSON.stringify(blocked)); }, [blocked]);
 
+  // Sincronizar mi lista de bloqueados con el servidor (privacidad de avatar):
+  // a quien yo bloqueo se le oculta mi foto de perfil.
+  useEffect(() => {
+    if (socket && isConnected) socket.emit("set blocks", { ids: blocked });
+  }, [blocked, socket, isConnected]);
+
   const setNicknameFor = (id: string, currentName: string) => {
     const value = window.prompt(`Apodo para ${currentName} (vacío para quitarlo):`, nicknames[id] || "");
     if (value === null) return;
@@ -227,6 +233,21 @@ export default function App() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [socket]);
+
+  // Share Target nativo: texto/links compartidos desde otras apps (TikTok,
+  // Instagram...) llegan como evento del bridge y rellenan el input activo.
+  useEffect(() => {
+    const onShare = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { text?: string } | string | undefined;
+      const text = (typeof detail === "string" ? detail : detail?.text)?.trim();
+      if (!text) return;
+      const chat = activeChatRef.current || LOBBY;
+      setDrafts((d) => ({ ...d, [chat]: ((d[chat] ? d[chat] + " " : "") + text).slice(0, 2000) }));
+      toast.success("Contenido compartido listo en tu mensaje");
+    };
+    window.addEventListener("shareReceived", onShare);
+    return () => window.removeEventListener("shareReceived", onShare);
+  }, []);
 
   const toggleBlock = (id: string) => {
     setBlocked((prev) => {
@@ -348,6 +369,23 @@ export default function App() {
   // ==========================================
   const handleAvatarFile = async (file: File) => {
     try {
+      // GIFs animados: se guardan tal cual (pasarlos por canvas los congela).
+      // Límite 1.4MB para respetar el tope de media del servidor.
+      if (file.type === "image/gif") {
+        if (file.size > 1_400_000) {
+          toast.error("El GIF es muy pesado (máx. 1.4MB). Prueba uno más ligero.");
+          return;
+        }
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error("read"));
+          reader.readAsDataURL(file);
+        });
+        chat.updateMe({ avatar: dataUrl });
+        toast.success("Avatar GIF animado actualizado");
+        return;
+      }
       const dataUrl = await downscaleImage(file, 256);
       chat.updateMe({ avatar: dataUrl });
       toast.success("Foto de perfil actualizada");
@@ -1025,6 +1063,22 @@ export default function App() {
             setPerms((p) => {
               const next = { ...p, cam: !p.cam };
               toast.info(next.cam ? "Cámara habilitada para videollamadas" : "Cámara deshabilitada: las videollamadas quedan bloqueadas.");
+              return next;
+            });
+          }}
+          onToggleNotif={() => {
+            setPerms((p) => {
+              const next = { ...p, notif: !p.notif };
+              if (next.notif && "Notification" in window) {
+                if (Notification.permission === "default") {
+                  Notification.requestPermission().then((r) => {
+                    if (r !== "granted") toast.info("Permiso denegado por el sistema. Actívalo en Ajustes → Apps → Forward_Chat → Notificaciones.");
+                  });
+                } else if (Notification.permission === "denied") {
+                  toast.info("El sistema las tiene bloqueadas. Actívalas en Ajustes → Apps → Forward_Chat → Notificaciones.");
+                }
+              }
+              toast.info(next.notif ? "Notificaciones habilitadas" : "Notificaciones deshabilitadas");
               return next;
             });
           }}

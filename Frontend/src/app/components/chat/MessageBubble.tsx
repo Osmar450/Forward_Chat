@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -162,6 +162,15 @@ function MessageBubbleInner({
 
   const reactionEntries = Object.entries(msg.reactions || {}).filter(([, users]) => users.length > 0);
 
+  // Escudo anti "ghost click": en Android, el click sintético que sigue al
+  // tap que ABRIÓ el selector aterriza sobre el overlay/botones recién
+  // montados y lo cerraba al instante (parecía que el botón "no funcionaba").
+  const pickerOpenedAtRef = useRef(0);
+  useEffect(() => {
+    if (pickerOpen) pickerOpenedAtRef.current = Date.now();
+  }, [pickerOpen]);
+  const ghostClick = () => Date.now() - pickerOpenedAtRef.current < 300;
+
   /**
    * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
    * Los segmentos sin coincidencia pasan por formatText (menciones intactas).
@@ -201,10 +210,10 @@ function MessageBubbleInner({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
       data-msgid={msg.id}
       className={`cv-row flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
     >
@@ -486,7 +495,7 @@ function MessageBubbleInner({
         <AnimatePresence>
           {pickerOpen && (
             <>
-              <div className="fixed inset-0 z-30" onClick={onClosePicker} />
+              <div className="fixed inset-0 z-30" onClick={() => { if (!ghostClick()) onClosePicker(); }} />
               <motion.div
                 initial={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -507,7 +516,7 @@ function MessageBubbleInner({
                         transition={{ delay: i * 0.04, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.3, y: -3 }}
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => onReact(msg.id, rid)}
+                        onClick={() => { if (!ghostClick()) onReact(msg.id, rid); }}
                         className={`size-9 max-md:size-11 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >

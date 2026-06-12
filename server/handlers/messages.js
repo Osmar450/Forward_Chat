@@ -1,5 +1,5 @@
 const { store, newMsgId, scheduleSave } = require('../store');
-const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID } = require('../users');
+const { getOrCreateUser, publicProfile, dmKey, areFriends, BOT_ID, cleanText } = require('../users');
 const { emitToUser, emitToScope, storeAndEmit } = require('../realtime');
 const { respondAsBot, generateSmartReplies } = require('../bot');
 const { logger } = require('../logger');
@@ -108,7 +108,7 @@ function register(io, socket) {
         if (!checkMessageRate(socket)) return;
 
         const user = getOrCreateUser(socket.userId);
-        const text = typeof msg?.text === 'string' ? msg.text.substring(0, 2000) : '';
+        const text = cleanText(msg?.text, 2000);
         const hasContent = text.trim() || (msg?.imageUrls && msg.imageUrls.length > 0) || msg?.audioUrl;
         if (!hasContent) return;
 
@@ -157,7 +157,7 @@ function register(io, socket) {
         }
 
         const user = getOrCreateUser(socket.userId);
-        const text = typeof msg?.text === 'string' ? msg.text.substring(0, 2000) : '';
+        const text = cleanText(msg?.text, 2000);
         const hasContent = text.trim() || (msg?.imageUrls && msg.imageUrls.length > 0) || msg?.audioUrl;
         if (!hasContent) return;
 

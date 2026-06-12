@@ -1,4 +1,4 @@
-﻿const { store, scheduleSave } = require('./store');
+const { store, scheduleSave } = require('./store');
 
 // ==========================================
 // FRIEND TOKEN: identificador Ãºnico que simula
@@ -152,10 +152,24 @@ function friendIdsOf(userId) {
         .map(([x, y]) => (x === userId ? y : x));
 }
 
+// ==========================================
+// SANEAMIENTO DE TEXTO
+// Nota de auditoría: el almacenamiento es JSON en disco (sin SQL/NoSQL), por
+// lo que no hay vectores de inyección de consultas; aun así, todo texto de
+// usuario se acota en longitud y se limpia de caracteres de control antes de
+// persistirse o retransmitirse.
+// ==========================================
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+function cleanText(value, maxLen = 2000) {
+    if (typeof value !== 'string') return '';
+    return value.replace(CONTROL_CHARS, '').substring(0, maxLen);
+}
+
 module.exports = {
     generateFriendCode,
     normalizeCode,
     sanitizeMedia,
+    cleanText,
     getOrCreateUser,
     publicProfile,
     generateAnonymousId,

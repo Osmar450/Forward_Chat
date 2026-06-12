@@ -26,10 +26,23 @@ function removeUserSocket(userId, socketId) {
     return false;
 }
 
+// Bloqueos: quién bloqueó a quién (para ocultar avatar/banner al bloqueado)
+const blocksByUser = new Map(); // userId -> Set<blockedUserId>
+
+function blockersOf(userId) {
+    const blockers = [];
+    blocksByUser.forEach((set, owner) => {
+        if (set.has(userId)) blockers.push(owner);
+    });
+    return blockers;
+}
+
 module.exports = {
     userSockets,
     isOnline,
     userRoom,
     addUserSocket,
-    removeUserSocket
+    removeUserSocket,
+    blocksByUser,
+    blockersOf
 };
