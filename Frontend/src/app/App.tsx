@@ -18,6 +18,8 @@ import {
   ChatFontKey,
   DEFAULT_CHAT_FONT,
   chatFontFamily,
+  BANNER_GRADIENT_KEY,
+  BANNER_GRADIENT_CSS,
 } from "./lib/chat";
 import { useChatSocket } from "./hooks/useChatSocket";
 import { useWebRTC } from "./hooks/useWebRTC";
@@ -173,19 +175,73 @@ export default function App() {
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
-  const rtc = useWebRTC(socket, selfId, {
-    mic: () => permsRef.current.mic,
-    cam: () => permsRef.current.cam,
-  });
-
   const me: Participant = participants[selfId] || {
     id: selfId,
     name: selfId || "Cargando...",
     color: USER_COLORS[0],
     status: "online",
   };
+  const meStatusRef = useRef(me.status);
+  meStatusRef.current = me.status;
+
+  const rtc = useWebRTC(socket, selfId, {
+    mic: () => permsRef.current.mic,
+    cam: () => permsRef.current.cam,
+    // "No molestar": llamadas entrantes sin tono ni vibración
+    silent: () => meStatusRef.current === "dnd",
+  });
+
+  // ==========================================
+  // APODOS Y BLOQUEOS (locales por dispositivo)
+  // ==========================================
+  const [nicknames, setNicknames] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem("chatNicknames") || "{}"); } catch { return {}; }
+  });
+  const [blocked, setBlocked] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("chatBlocked") || "[]"); } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem("chatNicknames", JSON.stringify(nicknames)); }, [nicknames]);
+  useEffect(() => { localStorage.setItem("chatBlocked", JSON.stringify(blocked)); }, [blocked]);
+
+  const setNicknameFor = (id: string, currentName: string) => {
+    const value = window.prompt(`Apodo para ${currentName} (vacío para quitarlo):`, nicknames[id] || "");
+    if (value === null) return;
+    setNicknames((prev) => {
+      const next = { ...prev };
+      if (value.trim()) next[id] = value.trim().slice(0, 24);
+      else delete next[id];
+      return next;
+    });
+    toast.success(value.trim() ? "Apodo guardado" : "Apodo eliminado");
+  };
+
+  // Al volver del segundo plano (APK/PWA), resincronizar el chat activo por si
+  // se perdieron mensajes mientras el WebView estaba pausado. El lobby se
+  // recupera solo con la reconexión del socket ('message history').
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !socket?.connected) return;
+      const chat = activeChatRef.current;
+      if (chat && chat !== LOBBY) socket.emit("get dm history", { with: chat });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [socket]);
+
+  const toggleBlock = (id: string) => {
+    setBlocked((prev) => {
+      const isBlocked = prev.includes(id);
+      toast.info(isBlocked ? "Usuario desbloqueado" : "Usuario bloqueado: sus mensajes quedan ocultos");
+      return isBlocked ? prev.filter((b) => b !== id) : [...prev, id];
+    });
+  };
   const draft = drafts[activeChat || LOBBY] || "";
-  const activeMessages = activeChat ? chats[activeChat] || [] : [];
+  const rawActiveMessages = activeChat ? chats[activeChat] || [] : [];
+  // Los mensajes de usuarios bloqueados no se renderizan
+  const activeMessages = useMemo(
+    () => (blocked.length ? rawActiveMessages.filter((m) => !blocked.includes(m.authorId)) : rawActiveMessages),
+    [rawActiveMessages, blocked]
+  );
 
   // ==========================================
   // PERSISTENCIA DE STICKERS
@@ -658,7 +714,11 @@ export default function App() {
   }, [friends, chats, selfId]);
 
   const onlineCount = onlineIds.filter((id) => id !== BOT_ID).length;
-  const activePeer = activeChat && activeChat !== LOBBY ? participants[activeChat] : null;
+  const rawActivePeer = activeChat && activeChat !== LOBBY ? participants[activeChat] : null;
+  // El apodo local sustituye al nombre en la cabecera del DM
+  const activePeer = rawActivePeer
+    ? { ...rawActivePeer, name: nicknames[rawActivePeer.id] || rawActivePeer.name }
+    : null;
   const typingNames = activeChat
     ? Object.entries(typingUsers[activeChat] || {})
         .filter(([uid]) => uid !== selfId)
@@ -718,6 +778,7 @@ export default function App() {
 
   const bannerStyleFor = (p: Participant | null | undefined): React.CSSProperties => {
     if (!p) return { backgroundColor: t.accentHex };
+    if (p.bannerColor === BANNER_GRADIENT_KEY) return { background: BANNER_GRADIENT_CSS };
     if (p.bannerColor) return { backgroundColor: p.bannerColor };
     return { backgroundColor: p.color || t.accentHex };
   };
@@ -1035,10 +1096,14 @@ export default function App() {
           theme={t}
           selfId={selfId}
           friends={friends}
+          nickname={viewProfileId ? nicknames[viewProfileId] || null : null}
+          isBlocked={viewProfileId ? blocked.includes(viewProfileId) : false}
           bannerStyleFor={bannerStyleFor}
           onClose={() => setViewProfileId(null)}
           onEditProfile={() => setShowProfile(true)}
           onOpenChat={(id) => setActiveChat(id)}
+          onSetNickname={setNicknameFor}
+          onToggleBlock={toggleBlock}
         />
 
         <ProfileEditModal

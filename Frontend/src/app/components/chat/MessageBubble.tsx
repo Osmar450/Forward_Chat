@@ -1,12 +1,12 @@
 import React, { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
+import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
 import {
   Message,
   Participant,
-  QUICK_EMOJIS,
   REACTIONS,
   Receipt,
   STATUSES,
@@ -494,7 +494,7 @@ function MessageBubbleInner({
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
                 className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-40 max-w-[90vw] ${t.panel} border ${t.borderStrong} rounded-2xl px-2 py-2 shadow-2xl backdrop-blur`}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap justify-center">
                   {REACTIONS.map((r, i) => {
                     const rid = `i:${r.key}`;
                     const Icon = r.icon;
@@ -516,29 +516,7 @@ function MessageBubbleInner({
                     );
                   })}
                 </div>
-                {/* Emojis rápidos personalizados */}
-                <div className={`flex items-center gap-0.5 mt-1 pt-1 border-t ${t.border}`}>
-                  {QUICK_EMOJIS.map((char, i) => {
-                    const rid = `e:${char}`;
-                    const active = (msg.reactions?.[rid] || []).includes(selfId);
-                    return (
-                      <motion.button
-                        key={char}
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.08 + i * 0.025, type: "spring", stiffness: 400, damping: 18 }}
-                        whileHover={{ scale: 1.3, y: -3 }}
-                        whileTap={{ scale: 0.85 }}
-                        onClick={() => onReact(msg.id, rid)}
-                        className={`size-8 max-md:size-11 flex items-center justify-center rounded-full text-base max-md:text-lg leading-none ${active ? t.accentSoft : "hover:bg-white/10"}`}
-                        aria-label={`Reaccionar con ${char}`}
-                      >
-                        {char}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-                {/* Acciones: responder / editar / eliminar (integradas al menú) */}
+                {/* Acciones: responder / copiar / editar / eliminar */}
                 <div className={`flex items-center gap-1 mt-1 pt-1 border-t ${t.border}`}>
                   <button
                     onClick={() => {
@@ -549,6 +527,19 @@ function MessageBubbleInner({
                   >
                     <Reply className="size-3.5" /> Responder
                   </button>
+                  {!!msg.text && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(msg.text || "")
+                          .then(() => toast.success("Mensaje copiado"))
+                          .catch(() => toast.error("No se pudo copiar"));
+                        onClosePicker();
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-lg ${t.iconBtn} text-xs`}
+                    >
+                      <CopyIcon className="size-3.5" /> Copiar
+                    </button>
+                  )}
                   {canEdit && (
                     <button
                       onClick={() => onEdit(msg)}

@@ -103,9 +103,11 @@ export function Header({
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="truncate font-display text-sm flex items-center gap-1.5">
-                {activeChat === LOBBY ? "Lobby Público" : activePeer?.name || activeChat}
-                {activePeer?.isBot && <Sparkles className="size-3 text-purple-400" />}
+              {/* El ellipsis debe vivir en un span de texto: truncate sobre un
+                  contenedor flex no recorta a sus hijos */}
+              <div className="font-display text-sm flex items-center gap-1.5 min-w-0">
+                <span className="truncate">{activeChat === LOBBY ? "Lobby Público" : activePeer?.name || activeChat}</span>
+                {activePeer?.isBot && <Sparkles className="size-3 shrink-0 text-purple-400" />}
               </div>
               <div className={`text-xs ${t.textMuted} truncate`}>
                 {typingNames.length > 0 ? (

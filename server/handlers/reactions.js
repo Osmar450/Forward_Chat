@@ -19,12 +19,15 @@ function register(io, socket) {
         const message = findMessage(scope, msgId);
         if (!message) return;
         if (!message.reactions) message.reactions = {};
-        const users = message.reactions[reaction] || [];
-        if (users.includes(socket.userId)) {
-            message.reactions[reaction] = users.filter(u => u !== socket.userId);
-            if (message.reactions[reaction].length === 0) delete message.reactions[reaction];
-        } else {
-            message.reactions[reaction] = [...users, socket.userId];
+        const hadIt = (message.reactions[reaction] || []).includes(socket.userId);
+        // Regla: UNA reacción por usuario por mensaje. Se quita de todas y,
+        // si no era la misma que ya tenía, se aplica la nueva (toggle).
+        for (const rid of Object.keys(message.reactions)) {
+            message.reactions[rid] = message.reactions[rid].filter(u => u !== socket.userId);
+            if (message.reactions[rid].length === 0) delete message.reactions[rid];
+        }
+        if (!hadIt) {
+            message.reactions[reaction] = [...(message.reactions[reaction] || []), socket.userId];
         }
         scheduleSave();
         emitToScope(scope, 'reaction updated', { scope, msgId, reactions: message.reactions });

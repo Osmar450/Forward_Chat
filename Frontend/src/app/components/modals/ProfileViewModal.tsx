@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AtSign, Bot, KeyRound, MessageSquare, Pencil, Sparkles } from "lucide-react";
+import { AtSign, Ban, Bot, KeyRound, MessageSquare, Pencil, Sparkles, Tag } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
@@ -11,19 +11,28 @@ export function ProfileViewModal({
   theme: t,
   selfId,
   friends,
+  nickname,
+  isBlocked,
   bannerStyleFor,
   onClose,
   onEditProfile,
   onOpenChat,
+  onSetNickname,
+  onToggleBlock,
 }: {
   profile: Participant | null;
   theme: ThemeTokens;
   selfId: string;
   friends: string[];
+  /** Apodo local asignado a este contacto (si existe) */
+  nickname?: string | null;
+  isBlocked?: boolean;
   bannerStyleFor: (p: Participant | null | undefined) => React.CSSProperties;
   onClose: () => void;
   onEditProfile: () => void;
   onOpenChat: (id: string) => void;
+  onSetNickname?: (id: string, currentName: string) => void;
+  onToggleBlock?: (id: string) => void;
 }) {
   return (
     <AnimatePresence>
@@ -31,6 +40,7 @@ export function ProfileViewModal({
         const S = STATUSES[p.status];
         const isSelfProfile = p.id === selfId;
         const isFriend = friends.includes(p.id);
+        const canModerate = !isSelfProfile && !p.isBot;
         return (
           <motion.div
             initial={{ opacity: 0 }}
@@ -62,16 +72,54 @@ export function ProfileViewModal({
                     </div>
                     <span className={`absolute -bottom-0.5 -right-0.5 size-5 rounded-full ${S.bg} border-2`} style={{ borderColor: t.accentHex }} />
                   </div>
-                  <CloseButton onClick={onClose} className={`${t.iconBtn} border shadow-sm`} size="small" />
+                  {/* Acciones: apodo, bloquear y cerrar */}
+                  <div className="flex items-center gap-1.5">
+                    {canModerate && onSetNickname && (
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => onSetNickname(p.id, p.name)}
+                        className={`p-2 rounded-lg ${t.iconBtn} ${t.accentText} border shadow-sm`}
+                        aria-label="Asignar apodo"
+                        title="Asignar apodo"
+                      >
+                        <Tag className="size-4" />
+                      </motion.button>
+                    )}
+                    {canModerate && onToggleBlock && (
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => onToggleBlock(p.id)}
+                        className={`p-2 rounded-lg border shadow-sm ${isBlocked ? "bg-red-500 text-white border-red-500" : `${t.iconBtn} text-red-400`}`}
+                        aria-label={isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
+                        title={isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
+                      >
+                        <Ban className="size-4" />
+                      </motion.button>
+                    )}
+                    <CloseButton onClick={onClose} className={`${t.iconBtn} border shadow-sm`} size="small" />
+                  </div>
                 </div>
                 <div className="font-display text-base flex items-center gap-1.5">
-                  {p.name}
-                  {p.isBot && <Sparkles className="size-3.5 text-purple-400" />}
+                  <span className="truncate">{nickname || p.name}</span>
+                  {p.isBot && <Sparkles className="size-3.5 shrink-0 text-purple-400" />}
                 </div>
+                {nickname && (
+                  <div className={`text-xs ${t.textMuted} flex items-center gap-1 mt-0.5`}>
+                    <Tag className="size-3 opacity-60" />
+                    Apodo de <span className={t.text}>{p.name}</span>
+                  </div>
+                )}
                 <div className={`text-xs font-pixel-ui flex items-center gap-1.5 mt-1 ${S.color}`}>
                   <S.icon className="size-3" fill={p.status === "online" || p.status === "dnd" ? "currentColor" : "none"} />
                   {S.label}
                 </div>
+                {isBlocked && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-500/15 text-red-400 text-[11px]">
+                    <Ban className="size-3" /> Bloqueado: sus mensajes están ocultos
+                  </div>
+                )}
 
                 {p.bio && (
                   <>
@@ -104,10 +152,11 @@ export function ProfileViewModal({
                       onClose();
                       onOpenChat(p.id);
                     }}
-                    className={`mt-4 w-full py-2.5 rounded-xl ${t.accent} ${t.accentHover} text-white flex items-center justify-center gap-2 shadow-lg`}
+                    disabled={isBlocked}
+                    className={`mt-4 w-full py-2.5 rounded-xl ${isBlocked ? `${t.iconBtn} opacity-50 cursor-not-allowed` : `${t.accent} ${t.accentHover} text-white`} flex items-center justify-center gap-2 shadow-lg`}
                   >
                     <MessageSquare className="size-4" />
-                    <span className="text-sm">Enviar mensaje</span>
+                    <span className="text-sm">{isBlocked ? "Bloqueado" : "Enviar mensaje"}</span>
                   </motion.button>
                 ) : (
                   <div className={`mt-4 rounded-xl ${t.inputBg} border ${t.border} p-3 text-[11px] ${t.textMuted} flex items-start gap-2`}>

@@ -19,7 +19,8 @@ import { toast } from "sonner";
 // (p. ej. cuenta gratuita de metered.ca, o un coturn propio)
 function buildIceServers(): RTCConfiguration {
   const iceServers: RTCIceServer[] = [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    // Varios STUN independientes mejoran el NAT traversal en llamadas a distancia
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:global.stun.twilio.com:3478", "stun:stun.cloudflare.com:3478"] },
   ];
   const turnUrls = (import.meta.env.VITE_TURN_URLS as string | undefined)
     ?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -82,7 +83,12 @@ export type WebRTCApi = {
 const CALL_TIMEOUT_MS = 30000;
 const RINGTONE_URL = "/Sounds/Your_Line_Is_Open.mp3";
 
-export type CallPermissions = { mic?: () => boolean; cam?: () => boolean };
+export type CallPermissions = {
+  mic?: () => boolean;
+  cam?: () => boolean;
+  /** true = No molestar: la llamada entrante no suena ni vibra (solo UI) */
+  silent?: () => boolean;
+};
 
 export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPermissions): WebRTCApi {
   const [callState, setCallState] = useState<CallState>("idle");
@@ -148,6 +154,8 @@ export function useWebRTC(socket: Socket | null, selfId: string, perms?: CallPer
 
   const startRinging = useCallback(() => {
     if (ringerStopRef.current) return; // ya está sonando
+    // "No molestar": se muestra la llamada entrante pero sin sonido ni vibración
+    if (permsRef.current?.silent?.()) return;
     let stopped = false;
     let synthStarted = false;
     let ctx: AudioContext | null = null;

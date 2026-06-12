@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { Camera, Check, Copy, KeyRound, Palette, Pencil, Pipette, Sparkles, User, X } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
-import { BANNER_COLORS, Participant, STATUSES, Status, USER_COLORS } from "../../lib/chat";
+import { BANNER_COLORS, BANNER_GRADIENT_CSS, BANNER_GRADIENT_KEY, Participant, STATUSES, Status, USER_COLORS } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
 
 type Props = {
@@ -171,11 +171,23 @@ function ProfileEditCard({
               <Pipette className="size-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]" />
               <input
                 type="color"
-                value={me.bannerColor || me.color || "#7c5cff"}
+                value={me.bannerColor && me.bannerColor !== BANNER_GRADIENT_KEY ? me.bannerColor : me.color || "#7c5cff"}
                 onChange={(e) => updateMe({ bannerColor: e.target.value, banner: null })}
                 className="absolute inset-0 size-full opacity-0 cursor-pointer"
               />
             </label>
+            {/* Degradado multicolor: siempre la última opción */}
+            <motion.button
+              whileHover={{ scale: 1.2, y: -2 }}
+              whileTap={{ scale: 0.85 }}
+              onClick={() => updateMe({ bannerColor: BANNER_GRADIENT_KEY, banner: null })}
+              className={`size-7 rounded-lg shadow-md ${!me.banner && me.bannerColor === BANNER_GRADIENT_KEY ? "ring-2 ring-offset-1 ring-offset-transparent ring-white/80" : ""}`}
+              style={{ background: BANNER_GRADIENT_CSS }}
+              aria-label="Banner degradado multicolor"
+              title="Degradado multicolor"
+            >
+              {!me.banner && me.bannerColor === BANNER_GRADIENT_KEY && <Check className="size-4 text-white mx-auto" strokeWidth={3} />}
+            </motion.button>
           </div>
 
           {/* ---- Color de usuario ---- */}

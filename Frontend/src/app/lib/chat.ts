@@ -1,4 +1,4 @@
-import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry } from "lucide-react";
+import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry, Skull, PartyPopper } from "lucide-react";
 import type React from "react";
 // Avatar del bot empaquetado en el bundle (el SVG remoto no renderiza en Android)
 import botAvatarUrl from "../../assets/Forward_Bot.png";
@@ -12,7 +12,7 @@ export const dmScopeOf = (a: string, b: string) => [a, b].sort().join("|");
 
 export type Status = "online" | "idle" | "dnd" | "invisible" | "offline";
 
-export type ReactionKey = "heart" | "thumb" | "laugh" | "sad" | "fire" | "angry";
+export type ReactionKey = "heart" | "thumb" | "laugh" | "sad" | "fire" | "angry" | "skull" | "party";
 
 export type Participant = {
   id: string;
@@ -84,10 +84,15 @@ export const USER_COLORS = [
 export const BANNER_COLORS = [
   "#7c5cff", "#ec4899", "#22d3ee", "#f59e0b", "#10b981",
   "#ef4444", "#3b82f6", "#1e293b", "#831843", "#14532d",
+  // Paleta extendida (armónica con los temas de la app)
+  "#a855f7", "#f97316", "#84cc16", "#06b6d4", "#e11d48",
+  "#0f766e", "#7c2d12", "#4c1d95", "#b45309",
 ];
 
-/** Reacciones de emoji rápidas del selector (long-press / tap en burbuja). */
-export const QUICK_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🙏", "😡"];
+/** Valor especial de bannerColor: degradado multicolor (siempre al final). */
+export const BANNER_GRADIENT_KEY = "__gradient__";
+export const BANNER_GRADIENT_CSS =
+  "linear-gradient(135deg, #7c5cff 0%, #ec4899 30%, #f59e0b 55%, #10b981 80%, #22d3ee 100%)";
 
 // ==========================================
 // FUENTES DE LAS BURBUJAS (configurables en el menú "Fuentes")
@@ -128,6 +133,8 @@ export const REACTIONS: { key: ReactionKey; icon: React.ComponentType<{ classNam
   { key: "sad", icon: Frown, color: "text-cyan-400", label: "Triste" },
   { key: "fire", icon: Flame, color: "text-orange-500", label: "Genial" },
   { key: "angry", icon: Angry, color: "text-red-600", label: "Enojado" },
+  { key: "skull", icon: Skull, color: "text-slate-300", label: "Calavera" },
+  { key: "party", icon: PartyPopper, color: "text-pink-400", label: "Fiesta" },
 ];
 
 export const messagePreview = (kind: MessageKind, text?: string) => {
