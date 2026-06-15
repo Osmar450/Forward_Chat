@@ -14,11 +14,15 @@ export type Theme =
   | "lavender"
   | "deepOcean"
   | "nightForest"
-  | "midnightCoffee";
+  | "midnightCoffee"
+  | "zazaLight"
+  | "zazaDark"
+  | "nyanLight"
+  | "nyanDark";
 
 /** Paletas mostradas en el selector, agrupadas por modo. */
-export const LIGHT_THEMES: Theme[] = ["candy", "redWhite", "warmCream", "blueBreeze", "softMint", "lavender"];
-export const DARK_THEMES: Theme[] = ["monokai", "solarized", "dracula", "oneDark", "redDark", "deepOcean", "nightForest", "midnightCoffee"];
+export const LIGHT_THEMES: Theme[] = ["candy", "redWhite", "warmCream", "blueBreeze", "softMint", "lavender", "zazaLight", "nyanLight"];
+export const DARK_THEMES: Theme[] = ["monokai", "solarized", "dracula", "oneDark", "redDark", "deepOcean", "nightForest", "midnightCoffee", "zazaDark", "nyanDark"];
 
 export type ThemeTokens = {
   name: string;
@@ -420,6 +424,100 @@ export const themes: Record<Theme, ThemeTokens> = {
     iconBtn: "bg-[#241b13] hover:bg-[#2d2218] border border-[#33271c]",
     danger: "bg-[#dc2626] hover:bg-[#ef4444]",
     preview: { bg: "bg-gradient-to-br from-[#1d1610] to-[#15100c]", bubbleA: "bg-[#d97706]", bubbleB: "bg-[#c2410c]", bubbleC: "bg-[#fbbf24]" },
+  },
+  zazaLight: {
+    name: "ZAZA Día",
+    isLight: true,
+    bg: "bg-[#eef6e9]",
+    panel: "bg-[#f5fbef]/95",
+    border: "border-[#c9e2b8]",
+    borderStrong: "border-[#39b54a]",
+    accent: "bg-[#39b54a]",
+    accentHover: "hover:bg-[#4ade57]",
+    accentSoft: "bg-[#39b54a]/15",
+    accentText: "text-[#2f8f3d]",
+    accentRing: "ring-[#39b54a]",
+    accentHex: "#39b54a",
+    mineBubble: "bg-[#39b54a]",
+    otherBubble: "bg-[#f5fbef] border border-[#c9e2b8]",
+    text: "text-[#14361a]",
+    textMuted: "text-[#5b7a52]",
+    onlineText: "text-[#16a34a]",
+    onlineDot: "bg-[#16a34a]",
+    inputBg: "bg-[#f5fbef]",
+    iconBtn: "bg-[#f5fbef] hover:bg-[#e6f3da] border border-[#c9e2b8] text-[#14361a]",
+    danger: "bg-[#dc2626] hover:bg-[#b91c1c]",
+    preview: { bg: "bg-gradient-to-br from-[#eef6e9] to-[#dcefcf]", bubbleA: "bg-[#39b54a]", bubbleB: "bg-[#a855f7]", bubbleC: "bg-[#7CFC00]" },
+  },
+  zazaDark: {
+    name: "ZAZA Noche",
+    bg: "bg-[#0a140c]",
+    panel: "bg-[#0f1d12]/95",
+    border: "border-[#1f3a24]",
+    borderStrong: "border-[#7CFC00]",
+    accent: "bg-[#39b54a]",
+    accentHover: "hover:bg-[#4cd964]",
+    accentSoft: "bg-[#7CFC00]/15",
+    accentText: "text-[#7CFC00]",
+    accentRing: "ring-[#7CFC00]",
+    accentHex: "#7CFC00",
+    mineBubble: "bg-[#2f8f3d]",
+    otherBubble: "bg-[#15281a] border border-[#1f3a24]",
+    text: "text-[#dcffd6]",
+    textMuted: "text-[#7fae84]",
+    onlineText: "text-[#7CFC00]",
+    onlineDot: "bg-[#7CFC00]",
+    inputBg: "bg-[#15281a]",
+    iconBtn: "bg-[#15281a] hover:bg-[#1c3322] border border-[#1f3a24]",
+    danger: "bg-[#ef4444] hover:bg-[#f87171]",
+    preview: { bg: "bg-gradient-to-br from-[#0f1d12] to-[#0a140c]", bubbleA: "bg-[#7CFC00]", bubbleB: "bg-[#a855f7]", bubbleC: "bg-[#39b54a]" },
+  },
+  nyanLight: {
+    name: "Nyan Día",
+    isLight: true,
+    bg: "bg-[#eaf2ff]",
+    panel: "bg-[#f4f8ff]/95",
+    border: "border-[#cdddf7]",
+    borderStrong: "border-[#ff66c4]",
+    accent: "bg-[#ff66c4]",
+    accentHover: "hover:bg-[#ff85d1]",
+    accentSoft: "bg-[#ff66c4]/15",
+    accentText: "text-[#d6249f]",
+    accentRing: "ring-[#ff66c4]",
+    accentHex: "#ff66c4",
+    mineBubble: "bg-[#ff66c4]",
+    otherBubble: "bg-[#f4f8ff] border border-[#cdddf7]",
+    text: "text-[#1b2a4a]",
+    textMuted: "text-[#6076a3]",
+    onlineText: "text-[#16a34a]",
+    onlineDot: "bg-[#16a34a]",
+    inputBg: "bg-[#f4f8ff]",
+    iconBtn: "bg-[#f4f8ff] hover:bg-[#e4eeff] border border-[#cdddf7] text-[#1b2a4a]",
+    danger: "bg-[#ef4444] hover:bg-[#dc2626]",
+    preview: { bg: "bg-gradient-to-r from-[#ff0000] via-[#ffff00] via-[#00ff00] via-[#00ccff] to-[#cc66ff]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#ffd93b]", bubbleC: "bg-[#00ccff]" },
+  },
+  nyanDark: {
+    name: "Nyan Noche",
+    bg: "bg-[#0a1230]",
+    panel: "bg-[#0f1a40]/95",
+    border: "border-[#23306b]",
+    borderStrong: "border-[#ff66c4]",
+    accent: "bg-[#ff66c4]",
+    accentHover: "hover:bg-[#ff85d1]",
+    accentSoft: "bg-[#ff66c4]/20",
+    accentText: "text-[#ff9de0]",
+    accentRing: "ring-[#ff66c4]",
+    accentHex: "#ff66c4",
+    mineBubble: "bg-[#d6249f]",
+    otherBubble: "bg-[#142154] border border-[#23306b]",
+    text: "text-[#e6ecff]",
+    textMuted: "text-[#8a9bd4]",
+    onlineText: "text-[#5cff9d]",
+    onlineDot: "bg-[#5cff9d]",
+    inputBg: "bg-[#142154]",
+    iconBtn: "bg-[#142154] hover:bg-[#1b2a66] border border-[#23306b]",
+    danger: "bg-[#ef4444] hover:bg-[#f87171]",
+    preview: { bg: "bg-gradient-to-r from-[#ff0000] via-[#ffff00] via-[#00ff00] via-[#00ccff] to-[#cc66ff]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#ffd93b]", bubbleC: "bg-[#00ccff]" },
   },
 };
 

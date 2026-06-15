@@ -40,6 +40,44 @@ const ProfileEditModal = React.lazy(() => import("./components/modals/ProfileEdi
 const CallOverlay = React.lazy(() => import("./components/call/CallOverlay").then((m) => ({ default: m.CallOverlay })));
 const IncomingCallModal = React.lazy(() => import("./components/call/IncomingCallModal").then((m) => ({ default: m.IncomingCallModal })));
 const FontsModal = React.lazy(() => import("./components/modals/FontsModal").then((m) => ({ default: m.FontsModal })));
+const SettingsModal = React.lazy(() => import("./components/modals/SettingsModal").then((m) => ({ default: m.SettingsModal })));
+const AboutModal = React.lazy(() => import("./components/modals/AboutModal").then((m) => ({ default: m.AboutModal })));
+
+/**
+ * Solicita el permiso de notificaciones. En el APK usa el plugin nativo de
+ * Capacitor (dispara el diálogo POST_NOTIFICATIONS en Android 13+ y crea el
+ * canal); en web cae al Notification API estándar.
+ */
+async function requestNotificationPermission() {
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  if (cap?.isNativePlatform?.()) {
+    try {
+      const mod = await import("@capacitor/local-notifications");
+      const { LocalNotifications } = mod;
+      await LocalNotifications.createChannel?.({
+        id: "messages",
+        name: "Mensajes",
+        description: "Mensajes y llamadas de Forward_Chat",
+        importance: 5,
+      });
+      const res = await LocalNotifications.requestPermissions();
+      if (res.display !== "granted") {
+        toast.info("Activa las notificaciones en Ajustes → Apps → Forward_Chat → Notificaciones.");
+      }
+      return;
+    } catch {
+      /* plugin ausente: cae a web */
+    }
+  }
+  if ("Notification" in window) {
+    if (Notification.permission === "default") {
+      const r = await Notification.requestPermission();
+      if (r !== "granted") toast.info("Permiso denegado por el sistema. Actívalo desde los ajustes del navegador/app.");
+    } else if (Notification.permission === "denied") {
+      toast.info("Las notificaciones están bloqueadas por el sistema. Actívalas en los ajustes.");
+    }
+  }
+}
 
 /**
  * App: composición y estado de UI. La lógica de tiempo real vive en
@@ -99,6 +137,13 @@ export default function App() {
     localStorage.setItem("chatPermissions", JSON.stringify(perms));
   }, [perms]);
 
+  // Al arrancar, si el usuario tiene notificaciones activadas, asegurar el
+  // permiso nativo (POST_NOTIFICATIONS en Android 13+) y crear el canal.
+  useEffect(() => {
+    if (perms.notif) requestNotificationPermission();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ==========================================
   // ESTADO DE UI
   // ==========================================
@@ -108,6 +153,8 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [showFonts, setShowFonts] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
@@ -212,13 +259,34 @@ export default function App() {
   const setNicknameFor = (id: string, currentName: string) => {
     const value = window.prompt(`Apodo para ${currentName} (vacío para quitarlo):`, nicknames[id] || "");
     if (value === null) return;
+    const apodo = value.trim().slice(0, 24);
     setNicknames((prev) => {
       const next = { ...prev };
-      if (value.trim()) next[id] = value.trim().slice(0, 24);
+      if (apodo) next[id] = apodo;
       else delete next[id];
       return next;
     });
-    toast.success(value.trim() ? "Apodo guardado" : "Apodo eliminado");
+    toast.success(apodo ? "Apodo guardado" : "Apodo eliminado");
+    // Alerta de sistema local en el chat con esa persona (solo en mi pantalla)
+    if (apodo && id !== selfId && id !== BOT_ID) {
+      const ts = Date.now();
+      const myName = participantsRef.current[selfId]?.name || "Tú";
+      chat.setChats((prev) => ({
+        ...prev,
+        [id]: [
+          ...(prev[id] || []),
+          {
+            id: `sys-${ts}`,
+            authorId: "system",
+            kind: "text" as const,
+            text: `${myName} te ha asignado el apodo: ${apodo}`,
+            time: fmtClock(ts),
+            timestamp: ts,
+            system: true,
+          },
+        ],
+      }));
+    }
   };
 
   // Al volver del segundo plano (APK/PWA), resincronizar el chat activo por si
@@ -721,6 +789,9 @@ export default function App() {
     setMenuOpen(false);
     setShowProfile(false);
     setShowThemes(false);
+    setShowFonts(false);
+    setShowSettings(false);
+    setShowAbout(false);
     setShowFriends(false);
     setShowMembers(false);
     setViewProfileId(null);
@@ -812,7 +883,7 @@ export default function App() {
         : [],
     [activeChat, participants]
   );
-  const overlayOpen = !!(showThemes || showProfile || menuOpen || viewProfileId || pendingImage || showFriends || showMembers);
+  const overlayOpen = !!(showThemes || showFonts || showSettings || showAbout || showProfile || menuOpen || viewProfileId || pendingImage || showFriends || showMembers);
 
   const bannerStyleFor = (p: Participant | null | undefined): React.CSSProperties => {
     if (!p) return { backgroundColor: t.accentHex };
@@ -1041,8 +1112,6 @@ export default function App() {
           open={menuOpen}
           theme={t}
           me={me}
-          perms={perms}
-          ecoMode={ecoMode}
           friendCode={friendCode}
           latencyMs={latencyMs}
           isConnected={isConnected}
@@ -1052,36 +1121,33 @@ export default function App() {
           onOpenFriends={() => { setMenuOpen(false); setShowFriends(true); }}
           onOpenThemes={() => { setMenuOpen(false); setShowThemes(true); }}
           onOpenFonts={() => { setMenuOpen(false); setShowFonts(true); }}
-          onToggleMic={() => {
-            setPerms((p) => {
-              const next = { ...p, mic: !p.mic };
-              toast.info(next.mic ? "Micrófono habilitado para llamadas" : "Micrófono deshabilitado: no podrás llamar ni contestar.");
-              return next;
-            });
-          }}
-          onToggleCam={() => {
-            setPerms((p) => {
-              const next = { ...p, cam: !p.cam };
-              toast.info(next.cam ? "Cámara habilitada para videollamadas" : "Cámara deshabilitada: las videollamadas quedan bloqueadas.");
-              return next;
-            });
-          }}
-          onToggleNotif={() => {
-            setPerms((p) => {
-              const next = { ...p, notif: !p.notif };
-              if (next.notif && "Notification" in window) {
-                if (Notification.permission === "default") {
-                  Notification.requestPermission().then((r) => {
-                    if (r !== "granted") toast.info("Permiso denegado por el sistema. Actívalo en Ajustes → Apps → Forward_Chat → Notificaciones.");
-                  });
-                } else if (Notification.permission === "denied") {
-                  toast.info("El sistema las tiene bloqueadas. Actívalas en Ajustes → Apps → Forward_Chat → Notificaciones.");
-                }
-              }
-              toast.info(next.notif ? "Notificaciones habilitadas" : "Notificaciones deshabilitadas");
-              return next;
-            });
-          }}
+          onOpenSettings={() => { setMenuOpen(false); setShowSettings(true); }}
+          onOpenAbout={() => { setMenuOpen(false); setShowAbout(true); }}
+          onCopyFriendCode={copyFriendCode}
+        />
+
+        <React.Suspense fallback={null}>
+        <SettingsModal
+          open={showSettings}
+          theme={t}
+          perms={perms}
+          ecoMode={ecoMode}
+          onToggleMic={() => setPerms((p) => {
+            const next = { ...p, mic: !p.mic };
+            toast.info(next.mic ? "Micrófono habilitado para llamadas" : "Micrófono deshabilitado: no podrás llamar ni contestar.");
+            return next;
+          })}
+          onToggleCam={() => setPerms((p) => {
+            const next = { ...p, cam: !p.cam };
+            toast.info(next.cam ? "Cámara habilitada para videollamadas" : "Cámara deshabilitada: las videollamadas quedan bloqueadas.");
+            return next;
+          })}
+          onToggleNotif={() => setPerms((p) => {
+            const next = { ...p, notif: !p.notif };
+            if (next.notif) requestNotificationPermission();
+            toast.info(next.notif ? "Notificaciones habilitadas" : "Notificaciones deshabilitadas");
+            return next;
+          })}
           onToggleEco={() => {
             setEcoMode((v) => !v);
             toast.success(ecoMode ? "Modo Eco desactivado" : "Modo Eco activado: menos animaciones, menos batería");
@@ -1090,10 +1156,11 @@ export default function App() {
             chat.setChats((prev) => ({ ...prev, [activeChatRef.current || LOBBY]: [] }));
             toast.info("Chat limpiado localmente (solo en tu pantalla).");
           }}
-          onCopyFriendCode={copyFriendCode}
+          onClose={() => setShowSettings(false)}
         />
 
-        <React.Suspense fallback={null}>
+        <AboutModal open={showAbout} theme={t} onClose={() => setShowAbout(false)} />
+
         <FontsModal
           open={showFonts}
           theme={t}

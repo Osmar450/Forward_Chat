@@ -79,22 +79,21 @@ function ProfileEditCard({
               if (f) onPickBanner(f);
             }}
           />
-          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          {/* Botones siempre visibles (en móvil no hay hover) */}
+          <div className="absolute inset-0 bg-black/25 flex items-center justify-center gap-2">
             <motion.button
-              whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={() => bannerInputRef.current?.click()}
-              className="px-3 py-1.5 rounded-full bg-black/60 backdrop-blur text-white text-xs flex items-center gap-1.5 shadow-lg"
+              className="px-3 py-2 rounded-full bg-black/60 backdrop-blur text-white text-xs flex items-center gap-1.5 shadow-lg"
             >
               <Camera className="size-3.5" />
               Foto
             </motion.button>
             {(me.banner || me.bannerColor) && (
               <motion.button
-                whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => updateMe({ banner: null, bannerColor: null })}
-                className="px-3 py-1.5 rounded-full bg-black/60 backdrop-blur text-white text-xs flex items-center gap-1.5 shadow-lg"
+                className="px-3 py-2 rounded-full bg-black/60 backdrop-blur text-white text-xs flex items-center gap-1.5 shadow-lg"
               >
                 <X className="size-3.5" />
                 Quitar
@@ -136,9 +135,24 @@ function ProfileEditCard({
                 <Camera className="size-3.5 text-white" />
               </div>
             </motion.button>
+            {/* Acciones de avatar siempre visibles (sin depender de hover) */}
             <div className="flex items-center gap-2 pb-1">
-              <Pencil className={`size-4 ${t.accentText}`} />
-              <span className="text-sm">Editar Perfil</span>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => avatarInputRef.current?.click()}
+                className={`px-3 py-2 rounded-full ${t.accent} ${t.accentHover} text-white text-xs flex items-center gap-1.5 shadow-lg`}
+              >
+                <Camera className="size-3.5" /> Foto
+              </motion.button>
+              {me.avatar && (
+                <motion.button
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => updateMe({ avatar: null })}
+                  className={`px-3 py-2 rounded-full ${t.iconBtn} text-xs flex items-center gap-1.5`}
+                >
+                  <X className="size-3.5" /> Quitar
+                </motion.button>
+              )}
             </div>
           </div>
 

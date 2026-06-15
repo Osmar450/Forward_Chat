@@ -269,6 +269,18 @@ export function MessageList({
                 const newDay = !prev || !isSameDay(prev.timestamp, m.timestamp);
                 const showAuthor =
                   !prev || prev.authorId !== m.authorId || newDay || m.timestamp - prev.timestamp > GROUP_GAP_MS;
+                if (m.system) {
+                  return (
+                    <React.Fragment key={m.id}>
+                      {newDay && <DaySeparator label={fmtDayLabel(m.timestamp)} theme={t} />}
+                      <div className="flex justify-center py-1">
+                        <span className={`px-3 py-1 rounded-full text-[11px] ${t.inputBg} border ${t.border} ${t.textMuted}`}>
+                          {m.text}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  );
+                }
                 return (
                   <React.Fragment key={m.id}>
                     {newDay && <DaySeparator label={fmtDayLabel(m.timestamp)} theme={t} />}

@@ -68,6 +68,8 @@ export type Message = {
   edited?: boolean;
   /** Respuesta del bot llegando en vivo (fragmentos por socket) */
   streaming?: boolean;
+  /** Aviso de sistema local (apodos, etc.); se renderiza centrado */
+  system?: boolean;
   reactions?: ReactionMap;
   linkPreview?: LinkPreview;
   isBot?: boolean;

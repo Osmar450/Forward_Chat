@@ -59,8 +59,8 @@ function scheduleSave() {
 let msgSeq = 0;
 const newMsgId = () => `m${Date.now().toString(36)}${(msgSeq++).toString(36)}`;
 
-const LOBBY_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 horas
-const DM_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
+const LOBBY_RETENTION_MS = 48 * 60 * 60 * 1000; // 48 horas (privacidad)
+const DM_RETENTION_MS = 48 * 60 * 60 * 1000; // 48 horas (privacidad)
 const MAX_DM_MESSAGES = 500;
 
 function startRetentionCleanup() {
