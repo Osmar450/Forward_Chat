@@ -267,6 +267,10 @@ export default function App() {
       return next;
     });
     toast.success(apodo ? "Apodo guardado" : "Apodo eliminado");
+    // Notificar al otro usuario en tiempo real (su cliente inserta el aviso)
+    if (apodo && id !== selfId && id !== BOT_ID && socket?.connected) {
+      socket.emit("set nickname", { to: id, nickname: apodo });
+    }
     // Alerta de sistema local en el chat con esa persona (solo en mi pantalla)
     if (apodo && id !== selfId && id !== BOT_ID) {
       const ts = Date.now();
@@ -360,11 +364,37 @@ export default function App() {
       if (!mention || !shouldNotify(LOBBY)) return;
       fire(`${data.profile?.name || "Alguien"} te mencionó`, data.text || "");
     };
+    // Apodo asignado por otro usuario: aviso de sistema en el chat con él
+    const onNickname = (data: { from?: string; fromName?: string; nickname?: string }) => {
+      if (!data?.from || !data.nickname) return;
+      const ts = Date.now();
+      chat.setChats((prev) => ({
+        ...prev,
+        [data.from!]: [
+          ...(prev[data.from!] || []),
+          {
+            id: `sys-nick-${ts}`,
+            authorId: "system",
+            kind: "text" as const,
+            text: `${data.fromName || "Alguien"} te ha asignado el apodo: ${data.nickname}`,
+            time: fmtClock(ts),
+            timestamp: ts,
+            system: true,
+          },
+        ],
+      }));
+      if (activeChatRef.current !== data.from) {
+        toast.info(`${data.fromName || "Alguien"} te asignó un apodo`);
+      }
+    };
+
     socket.on("dm message", onDm);
     socket.on("chat message", onLobby);
+    socket.on("nickname assigned", onNickname);
     return () => {
       socket.off("dm message", onDm);
       socket.off("chat message", onLobby);
+      socket.off("nickname assigned", onNickname);
     };
   }, [socket, selfId]);
 
@@ -901,6 +931,12 @@ export default function App() {
     setFavoriteStickers((prev) => (prev.includes(url) ? prev.filter((s) => s !== url) : [...prev, url]));
   };
 
+  const deleteSticker = (url: string) => {
+    setStickers((prev) => prev.filter((s) => s !== url));
+    setFavoriteStickers((prev) => prev.filter((s) => s !== url));
+    toast.success("Sticker eliminado de tu colección");
+  };
+
   const handleStickerFile = async (file: File) => {
     try {
       const url = await downscaleImage(file, 320);
@@ -1215,6 +1251,7 @@ export default function App() {
               favoriteStickers={favoriteStickers}
               onSendSticker={sendSticker}
               onToggleFavoriteSticker={toggleFavoriteSticker}
+              onDeleteSticker={deleteSticker}
               onUploadSticker={handleStickerFile}
               recording={recording}
               recordingPaused={recordingPaused}

@@ -40,6 +40,7 @@ export function Composer({
   favoriteStickers,
   onSendSticker,
   onToggleFavoriteSticker,
+  onDeleteSticker,
   onUploadSticker,
   recording,
   recordingPaused,
@@ -84,6 +85,7 @@ export function Composer({
   favoriteStickers: string[];
   onSendSticker: (url: string) => void;
   onToggleFavoriteSticker: (url: string) => void;
+  onDeleteSticker: (url: string) => void;
   onUploadSticker: (file: File) => void;
   recording: boolean;
   recordingPaused: boolean;
@@ -278,6 +280,7 @@ export function Composer({
             favoriteStickers={favoriteStickers}
             onSend={onSendSticker}
             onToggleFavorite={onToggleFavoriteSticker}
+            onDelete={onDeleteSticker}
             onUpload={onUploadSticker}
             onClose={onCloseStickers}
           />

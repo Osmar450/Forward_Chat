@@ -32,6 +32,9 @@ app.set('trust proxy', 1); // IP real del cliente detrás de nginx/balanceador
 app.disable('x-powered-by');
 app.use(securityHeaders);
 app.use(cors()); // Permitir conexiones desde Vite
+// Payloads grandes (banners GIF/MP4 pesados antes de la compresión del servidor)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const server = http.createServer(app);
 const io = new Server(server, {

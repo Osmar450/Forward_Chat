@@ -1,4 +1,5 @@
-const { getOrCreateUser, publicProfile, normalizeCode, areFriends, addFriendship, removeFriendship, findUserByCode } = require('../users');
+const { store } = require('../store');
+const { getOrCreateUser, publicProfile, normalizeCode, areFriends, addFriendship, removeFriendship, findUserByCode, cleanText } = require('../users');
 const { isOnline } = require('../presence');
 const { emitToUser, sendFriendsList } = require('../realtime');
 const { makeSocketRateLimiter } = require('../security');
@@ -46,6 +47,21 @@ function register(io, socket) {
             sendFriendsList(socket.userId);
             sendFriendsList(other);
         }
+    });
+
+    // Apodo: el cliente A guarda el apodo localmente y notifica a B en tiempo real
+    socket.on('set nickname', (payload) => {
+        if (!socket.userId || !payload?.to) return;
+        const target = payload.to;
+        if (target === socket.userId || !store.users[target]) return;
+        const nickname = cleanText(payload.nickname, 24);
+        if (!nickname) return;
+        const me = getOrCreateUser(socket.userId);
+        emitToUser(target, 'nickname assigned', {
+            from: socket.userId,
+            fromName: me.name,
+            nickname,
+        });
     });
 }
 

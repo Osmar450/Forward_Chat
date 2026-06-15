@@ -176,11 +176,26 @@ function MessageBubbleInner({
   // tap que ABRIÓ el selector aterriza sobre el overlay/botones recién
   // montados y lo cerraba al instante (parecía que el botón "no funcionaba").
   const pickerOpenedAtRef = useRef(0);
+  const pickerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (pickerOpen) pickerOpenedAtRef.current = Date.now();
     else setPickerExpanded(false); // al cerrar, colapsar el panel extendido del "+"
   }, [pickerOpen]);
   const ghostClick = () => Date.now() - pickerOpenedAtRef.current < 300;
+
+  // Cierre por toque fuera del picker SIN un backdrop a pantalla completa: un
+  // overlay fixed roba los clicks a los botones del picker (vive en otro
+  // contexto de apilamiento por los transforms de las burbujas).
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDocPointer = (e: PointerEvent) => {
+      if (ghostClick()) return;
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) onClosePicker();
+    };
+    document.addEventListener("pointerdown", onDocPointer, true);
+    return () => document.removeEventListener("pointerdown", onDocPointer, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerOpen]);
 
   /**
    * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
@@ -517,7 +532,8 @@ function MessageBubbleInner({
                   animate={{ scale: 1, rotate: 0 }}
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: "spring", stiffness: 500, damping: 18 }}
-                  onClick={() => onReact(msg.id, rid)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onReact(msg.id, rid); }}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full border shadow-md ${t.panel} ${
                     mineToo ? t.borderStrong : t.border
                   }`}
@@ -535,14 +551,15 @@ function MessageBubbleInner({
         <AnimatePresence>
           {pickerOpen && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => { if (!ghostClick()) onClosePicker(); }} />
               <motion.div
+                ref={pickerRef}
                 initial={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
                 style={{ backgroundColor: getThemeBgColor(t) }}
-                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-50 max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-50 pointer-events-auto max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
               >
                 {/* Barra horizontal tipo píldora: 6 iconos + botón "+" */}
                 <div className="flex items-center gap-0.5 px-1.5 py-1">
@@ -558,7 +575,9 @@ function MessageBubbleInner({
                         transition={{ delay: i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.25, y: -2 }}
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => { if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
                         className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >
@@ -569,7 +588,9 @@ function MessageBubbleInner({
                   <motion.button
                     whileHover={{ scale: 1.15 }}
                     whileTap={{ scale: 0.85 }}
-                    onClick={() => { if (!ghostClick()) setPickerExpanded((v) => !v); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!ghostClick()) setPickerExpanded((v) => !v); }}
                     className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${pickerExpanded ? t.accentSoft : t.iconBtn}`}
                     aria-label="Más reacciones y acciones"
                     aria-expanded={pickerExpanded}
@@ -598,7 +619,9 @@ function MessageBubbleInner({
                                 <motion.button
                                   key={r.key}
                                   whileTap={{ scale: 0.85 }}
-                                  onClick={() => { onReact(msg.id, rid); onClosePicker(); }}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); onReact(msg.id, rid); onClosePicker(); }}
                                   className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                                   aria-label={r.label}
                                 >

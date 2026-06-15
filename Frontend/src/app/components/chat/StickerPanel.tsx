@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Star, Sticker } from "lucide-react";
+import { Sparkles, Star, Sticker, Trash2 } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { CloseButton } from "../common/CloseButton";
 
@@ -11,6 +11,7 @@ export function StickerPanel({
   favoriteStickers,
   onSend,
   onToggleFavorite,
+  onDelete,
   onUpload,
   onClose,
 }: {
@@ -19,6 +20,7 @@ export function StickerPanel({
   favoriteStickers: string[];
   onSend: (url: string) => void;
   onToggleFavorite: (url: string) => void;
+  onDelete: (url: string) => void;
   onUpload: (file: File) => void;
   onClose: () => void;
 }) {
@@ -97,10 +99,22 @@ export function StickerPanel({
                 e.stopPropagation();
                 onToggleFavorite(s);
               }}
-              className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/40 opacity-0 group-hover/stick:opacity-100 transition-opacity"
+              className="absolute top-0.5 right-0.5 p-1 rounded-full bg-black/45 opacity-100 md:opacity-0 md:group-hover/stick:opacity-100 transition-opacity"
               title={favoriteStickers.includes(s) ? "Quitar de favoritos" : "Agregar a favoritos"}
             >
               <Star className={`size-3 ${favoriteStickers.includes(s) ? "text-yellow-400 fill-yellow-400" : "text-white"}`} />
+            </button>
+            {/* Eliminar sticker de la colección */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(s);
+              }}
+              className="absolute top-0.5 left-0.5 p-1 rounded-full bg-black/45 text-red-300 opacity-100 md:opacity-0 md:group-hover/stick:opacity-100 transition-opacity"
+              title="Eliminar sticker"
+              aria-label="Eliminar sticker"
+            >
+              <Trash2 className="size-3" />
             </button>
           </div>
         ))}
