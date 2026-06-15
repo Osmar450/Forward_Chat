@@ -49,8 +49,8 @@ function normalizeCode(input) {
     return `FWD-${body.slice(0, 4)}-${body.slice(4)}`;
 }
 
-// ~3MB binarios en base64 (≈4.2MB de string): permite banners GIF/MP4 cortos
-const MAX_DATAURL_LENGTH = 4_400_000;
+// ~10MB binarios en base64 (≈13.5MB de string): permite banners GIF/MP4
+const MAX_DATAURL_LENGTH = 14_000_000;
 const ALLOWED_MEDIA = /^data:(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm));base64,/i;
 
 function sanitizeMedia(value) {

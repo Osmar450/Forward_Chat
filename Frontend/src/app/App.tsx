@@ -537,7 +537,7 @@ export default function App() {
   };
 
   const handleBannerFile = async (file: File) => {
-    const MAX = 3 * 1024 * 1024; // 3MB
+    const MAX = 10 * 1024 * 1024; // 10MB
     try {
       const readAsDataUrl = (f: File) =>
         new Promise<string>((resolve, reject) => {
@@ -550,7 +550,7 @@ export default function App() {
       // Video corto (mp4/webm): máx 3MB y 5s; sin transcodificar en cliente
       if (file.type.startsWith("video/")) {
         if (file.size > MAX) {
-          toast.error("El video del banner supera 3MB. Usa uno más corto o ligero.");
+          toast.error("El video del banner supera 10MB. Usa uno más corto o ligero.");
           return;
         }
         const url = URL.createObjectURL(file);
@@ -574,7 +574,7 @@ export default function App() {
       // GIF animado: se preserva tal cual (pasarlo por canvas lo congela)
       if (file.type === "image/gif") {
         if (file.size > MAX) {
-          toast.error("El GIF del banner supera 3MB. Prueba uno más ligero.");
+          toast.error("El GIF del banner supera 10MB. Prueba uno más ligero.");
           return;
         }
         chat.updateMe({ banner: await readAsDataUrl(file), bannerColor: null });

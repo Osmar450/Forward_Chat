@@ -36,7 +36,8 @@ app.use(cors()); // Permitir conexiones desde Vite
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*' },
-    maxHttpBufferSize: 10e6
+    // 18MB: cubre banners GIF/MP4 de hasta 10MB codificados en base64 (~13.5MB)
+    maxHttpBufferSize: 18e6
 });
 realtime.init(io);
 
