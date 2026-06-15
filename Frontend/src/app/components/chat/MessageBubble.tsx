@@ -258,7 +258,7 @@ function MessageBubbleInner({
       )}
 
       {isMine && !msg.deleted && (canEdit || canDelete) && (
-        <span className="flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden">
+        <span className="flex items-center gap-0.5 self-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           {canEdit && (
             <motion.button
               whileHover={{ scale: 1.15 }}
@@ -301,7 +301,7 @@ function MessageBubbleInner({
         )}
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
           {!msg.deleted && (
-            <span className="flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity max-md:hidden">
+            <span className="flex items-center gap-0.5 self-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               <motion.button
                 whileHover={{ scale: 1.2, rotate: -8 }}
                 whileTap={{ scale: 0.85, rotate: 12 }}
@@ -575,7 +575,7 @@ function MessageBubbleInner({
                         transition={{ delay: i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.25, y: -2 }}
                         whileTap={{ scale: 0.85 }}
-                        onClick={() => { if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
                         className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >
@@ -586,7 +586,7 @@ function MessageBubbleInner({
                   <motion.button
                     whileHover={{ scale: 1.15 }}
                     whileTap={{ scale: 0.85 }}
-                    onClick={() => { if (!ghostClick()) setPickerExpanded((v) => !v); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) setPickerExpanded((v) => !v); }}
                     className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${pickerExpanded ? t.accentSoft : t.iconBtn}`}
                     aria-label="Más reacciones y acciones"
                     aria-expanded={pickerExpanded}
@@ -615,7 +615,7 @@ function MessageBubbleInner({
                                 <motion.button
                                   key={r.key}
                                   whileTap={{ scale: 0.85 }}
-                                  onClick={() => { onReact(msg.id, rid); onClosePicker(); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReact(msg.id, rid); onClosePicker(); }}
                                   className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                                   aria-label={r.label}
                                 >
