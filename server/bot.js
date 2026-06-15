@@ -88,7 +88,7 @@ function logBotConfig() {
 // ==========================================
 // LÓGICA DEL BOT (compartida entre lobby y DM)
 // ==========================================
-const AI_TIMEOUT_MS = 45000;
+const AI_TIMEOUT_MS = 60000;
 
 // Evita que una petición colgada a la API deje al bot "escribiendo" para siempre
 function withTimeout(promise, ms) {
@@ -185,7 +185,7 @@ const smartReplyModel = genAI ? genAI.getGenerativeModel({
     generationConfig: { maxOutputTokens: 150, temperature: 0.7, responseMimeType: 'application/json' }
 }) : null;
 
-const SMART_REPLY_TIMEOUT_MS = 30000;
+const SMART_REPLY_TIMEOUT_MS = 60000;
 
 /**
  * Genera 3 respuestas cortas y contextuales que `recipientName` podría enviar

@@ -69,15 +69,28 @@ export function StickerPanel({
             </div>
             <div className="grid grid-cols-4 gap-2">
               {favoriteStickers.map((s, i) => (
-                <motion.button
-                  key={`fav-${i}`}
-                  whileHover={{ scale: 1.1, rotate: 5 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => onSend(s)}
-                  className="aspect-square rounded-lg overflow-hidden bg-black/5 flex items-center justify-center p-1"
-                >
-                  <img src={s} alt="" className="size-full object-contain" />
-                </motion.button>
+                <div key={`fav-${i}`} className="relative group/fav aspect-square">
+                  <motion.button
+                    whileHover={{ scale: 1.08, rotate: 5 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => onSend(s)}
+                    className="size-full rounded-lg overflow-hidden bg-black/5 flex items-center justify-center p-1"
+                  >
+                    <img src={s} alt="" className="size-full object-contain" />
+                  </motion.button>
+                  {/* Eliminar globalmente desde Favoritos */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(s);
+                    }}
+                    className="absolute top-0.5 left-0.5 p-1 rounded-full bg-black/45 text-red-300 opacity-100 md:opacity-0 md:group-hover/fav:opacity-100 transition-opacity"
+                    title="Eliminar sticker"
+                    aria-label="Eliminar sticker"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </div>
               ))}
             </div>
             <div className={`my-3 border-t ${t.border} opacity-50`} />

@@ -575,9 +575,7 @@ function MessageBubbleInner({
                         transition={{ delay: i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.25, y: -2 }}
                         whileTap={{ scale: 0.85 }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
+                        onClick={() => { if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
                         className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
                       >
@@ -588,9 +586,7 @@ function MessageBubbleInner({
                   <motion.button
                     whileHover={{ scale: 1.15 }}
                     whileTap={{ scale: 0.85 }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!ghostClick()) setPickerExpanded((v) => !v); }}
+                    onClick={() => { if (!ghostClick()) setPickerExpanded((v) => !v); }}
                     className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${pickerExpanded ? t.accentSoft : t.iconBtn}`}
                     aria-label="Más reacciones y acciones"
                     aria-expanded={pickerExpanded}
@@ -619,9 +615,7 @@ function MessageBubbleInner({
                                 <motion.button
                                   key={r.key}
                                   whileTap={{ scale: 0.85 }}
-                                  onPointerDown={(e) => e.stopPropagation()}
-                                  onTouchStart={(e) => e.stopPropagation()}
-                                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); onReact(msg.id, rid); onClosePicker(); }}
+                                  onClick={() => { onReact(msg.id, rid); onClosePicker(); }}
                                   className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                                   aria-label={r.label}
                                 >
