@@ -305,7 +305,7 @@ export function Composer({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,image/gif"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -401,6 +401,15 @@ export function Composer({
                     return;
                   }
                   onKeyDown(e);
+                }}
+                onPaste={(e) => {
+                  // GIF/imagen desde el teclado nativo o portapapeles de Android
+                  const item = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith("image/"));
+                  const file = item?.getAsFile();
+                  if (file) {
+                    e.preventDefault();
+                    onPickImage(file);
+                  }
                 }}
                 enterKeyHint="send"
                 placeholder={isEditing ? "Edita tu mensaje..." : activeChat === LOBBY ? "Escribe un mensaje..." : `Mensaje para ${activePeer?.name || "..."}`}

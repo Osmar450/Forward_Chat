@@ -5,6 +5,7 @@ import { Camera, Check, Copy, KeyRound, Palette, Pencil, Pipette, Sparkles, User
 import type { ThemeTokens } from "../../lib/themes";
 import { BANNER_COLORS, BANNER_GRADIENT_CSS, BANNER_GRADIENT_KEY, Participant, STATUSES, Status, USER_COLORS } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
+import { BannerMedia } from "../common/BannerMedia";
 
 type Props = {
   open: boolean;
@@ -67,11 +68,11 @@ function ProfileEditCard({
       >
         {/* ---- Editor de banner ---- */}
         <div className="relative h-28 group" style={bannerStyleFor(me)}>
-          {me.banner && <img src={me.banner} alt="" className="size-full object-cover" />}
+          {me.banner && <BannerMedia src={me.banner} />}
           <input
             ref={bannerInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/mp4,video/webm"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

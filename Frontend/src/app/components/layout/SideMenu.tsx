@@ -4,6 +4,7 @@ import { Copy, Info, KeyRound, Palette, Pencil, Settings, Type, User, UserPlus, 
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
+import { BannerMedia } from "../common/BannerMedia";
 
 function MenuItem({ icon, label, onClick, mutedColor }: { icon: React.ReactNode; label: string; onClick?: () => void; mutedColor: string }) {
   return (
@@ -79,7 +80,7 @@ export function SideMenu({
             <div className={`relative shrink-0 overflow-hidden border-b ${t.border}`}>
               {/* Banner de fondo: cubre todo el encabezado hasta la línea */}
               <div className="absolute inset-0" style={me.banner ? undefined : bannerStyleFor(me)}>
-                {me.banner && <img src={me.banner} alt="" className="size-full object-cover" />}
+                {me.banner && <BannerMedia src={me.banner} />}
               </div>
               {/* Velo para legibilidad del texto sobre el banner */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />

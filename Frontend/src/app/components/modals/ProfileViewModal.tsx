@@ -4,6 +4,7 @@ import { AtSign, Ban, Bot, KeyRound, MessageSquare, Pencil, Sparkles, Tag } from
 import type { ThemeTokens } from "../../lib/themes";
 import { Participant, STATUSES } from "../../lib/chat";
 import { CloseButton } from "../common/CloseButton";
+import { BannerMedia } from "../common/BannerMedia";
 
 /** Tarjeta de perfil de cualquier participante (incluido uno mismo). */
 export function ProfileViewModal({
@@ -59,7 +60,7 @@ export function ProfileViewModal({
             >
               {/* Banner del perfil */}
               <div className="relative h-24 overflow-hidden" style={bannerStyleFor(p)}>
-                {p.banner && <img src={p.banner} alt="" className="size-full object-cover" />}
+                {p.banner && <BannerMedia src={p.banner} />}
               </div>
               <div className="px-5 pb-5 -mt-10">
                 <div className="flex items-end justify-between mb-3">

@@ -546,6 +546,9 @@ export function useChatSocket(options: {
     }
     let cancelled = false;
     const measure = () => {
+      // Batería: en segundo plano no medimos latencia (el SO estrangula timers
+      // y no hay UI que actualizar); reanuda solo al volver a primer plano.
+      if (document.hidden) return;
       const t0 = performance.now();
       socket.timeout(5000).emit("latency ping", (err: unknown) => {
         if (cancelled) return;
@@ -553,10 +556,13 @@ export function useChatSocket(options: {
       });
     };
     measure();
-    const iv = window.setInterval(measure, 10000);
+    const iv = window.setInterval(measure, 15000);
+    const onVis = () => { if (!document.hidden) measure(); };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [socket, isConnected]);
 

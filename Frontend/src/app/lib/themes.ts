@@ -494,7 +494,7 @@ export const themes: Record<Theme, ThemeTokens> = {
     inputBg: "bg-[#f4f8ff]",
     iconBtn: "bg-[#f4f8ff] hover:bg-[#e4eeff] border border-[#cdddf7] text-[#1b2a4a]",
     danger: "bg-[#ef4444] hover:bg-[#dc2626]",
-    preview: { bg: "bg-gradient-to-r from-[#ff0000] via-[#ffff00] via-[#00ff00] via-[#00ccff] to-[#cc66ff]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#ffd93b]", bubbleC: "bg-[#00ccff]" },
+    preview: { bg: "bg-gradient-to-br from-[#f4f8ff] to-[#eaf2ff]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#cdddf7]", bubbleC: "bg-[#00ccff]" },
   },
   nyanDark: {
     name: "Nyan Noche",
@@ -517,7 +517,7 @@ export const themes: Record<Theme, ThemeTokens> = {
     inputBg: "bg-[#142154]",
     iconBtn: "bg-[#142154] hover:bg-[#1b2a66] border border-[#23306b]",
     danger: "bg-[#ef4444] hover:bg-[#f87171]",
-    preview: { bg: "bg-gradient-to-r from-[#ff0000] via-[#ffff00] via-[#00ff00] via-[#00ccff] to-[#cc66ff]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#ffd93b]", bubbleC: "bg-[#00ccff]" },
+    preview: { bg: "bg-gradient-to-br from-[#0f1a40] to-[#0a1230]", bubbleA: "bg-[#ff66c4]", bubbleB: "bg-[#142154]", bubbleC: "bg-[#5cff9d]" },
   },
 };
 

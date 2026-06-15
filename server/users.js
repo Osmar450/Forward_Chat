@@ -49,11 +49,15 @@ function normalizeCode(input) {
     return `FWD-${body.slice(0, 4)}-${body.slice(4)}`;
 }
 
-const MAX_DATAURL_LENGTH = 2_000_000; // ~1.5MB en base64; evita perfiles gigantes
+// ~3MB binarios en base64 (≈4.2MB de string): permite banners GIF/MP4 cortos
+const MAX_DATAURL_LENGTH = 4_400_000;
+const ALLOWED_MEDIA = /^data:(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm));base64,/i;
 
 function sanitizeMedia(value) {
     if (typeof value !== 'string') return null;
     if (value.length > MAX_DATAURL_LENGTH) return null;
+    // Solo data URLs de imagen/video permitidas (evita inyectar otros esquemas)
+    if (value.startsWith('data:') && !ALLOWED_MEDIA.test(value)) return null;
     return value;
 }
 

@@ -317,6 +317,80 @@ export default function App() {
     return () => window.removeEventListener("shareReceived", onShare);
   }, []);
 
+  // ==========================================
+  // NOTIFICACIONES EN SEGUNDO PLANO
+  // Si la app no está en primer plano (o el chat no está abierto), avisar de
+  // DMs y menciones. Respeta "No molestar" y el permiso del usuario.
+  // ==========================================
+  useEffect(() => {
+    if (!socket) return;
+    const myName = () => participantsRef.current[selfId]?.name || "";
+    const shouldNotify = (peerChatKey: string) => {
+      if (!permsRef.current.notif) return false;
+      if (meStatusRef.current === "dnd") return false;
+      // No molestar si ya estoy viendo ese chat en primer plano
+      if (document.visibilityState === "visible" && activeChatRef.current === peerChatKey) return false;
+      return true;
+    };
+    const fire = (title: string, body: string) => {
+      const text = body.length > 120 ? body.slice(0, 117) + "..." : body;
+      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        import("@capacitor/local-notifications")
+          .then(({ LocalNotifications }) =>
+            LocalNotifications.schedule({
+              notifications: [{ id: Date.now() % 2147483647, title, body: text, channelId: "messages" }],
+            })
+          )
+          .catch(() => {});
+      } else if ("Notification" in window && Notification.permission === "granted") {
+        try { new Notification(title, { body: text }); } catch { /* noop */ }
+      }
+    };
+
+    const onDm = (data: { userId?: string; to?: string; text?: string; profile?: { name?: string } }) => {
+      if (!data?.userId || data.userId === selfId) return;
+      if (data.to !== selfId) return;
+      if (!shouldNotify(data.userId)) return;
+      fire(data.profile?.name || "Nuevo mensaje", data.text || "Te enviaron un mensaje");
+    };
+    const onLobby = (data: { userId?: string; text?: string; profile?: { name?: string } }) => {
+      if (!data?.userId || data.userId === selfId) return;
+      const mention = myName() && new RegExp(`@${myName()}\\b`, "i").test(data.text || "");
+      if (!mention || !shouldNotify(LOBBY)) return;
+      fire(`${data.profile?.name || "Alguien"} te mencionó`, data.text || "");
+    };
+    socket.on("dm message", onDm);
+    socket.on("chat message", onLobby);
+    return () => {
+      socket.off("dm message", onDm);
+      socket.off("chat message", onLobby);
+    };
+  }, [socket, selfId]);
+
+  // ==========================================
+  // OPTIMIZACIÓN DE BATERÍA (appStateChange de Capacitor)
+  // En segundo plano: pausar animaciones (reducedMotion) y dejar que el SO
+  // estrangule timers. Al volver: resincronizar para no perder mensajes.
+  // ==========================================
+  const [appActive, setAppActive] = useState(true);
+  useEffect(() => {
+    let remove: (() => void) | undefined;
+    const resync = () => {
+      const c = activeChatRef.current;
+      if (socket?.connected && c && c !== LOBBY) socket.emit("get dm history", { with: c });
+    };
+    import("@capacitor/app")
+      .then(({ App: CapApp }) => {
+        CapApp.addListener("appStateChange", ({ isActive }) => {
+          setAppActive(isActive);
+          if (isActive) resync();
+        }).then((h) => { remove = () => h.remove(); });
+      })
+      .catch(() => {});
+    return () => remove?.();
+  }, [socket]);
+
   const toggleBlock = (id: string) => {
     setBlocked((prev) => {
       const isBlocked = prev.includes(id);
@@ -463,12 +537,57 @@ export default function App() {
   };
 
   const handleBannerFile = async (file: File) => {
+    const MAX = 3 * 1024 * 1024; // 3MB
     try {
+      const readAsDataUrl = (f: File) =>
+        new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result as string);
+          r.onerror = () => reject(new Error("read"));
+          r.readAsDataURL(f);
+        });
+
+      // Video corto (mp4/webm): máx 3MB y 5s; sin transcodificar en cliente
+      if (file.type.startsWith("video/")) {
+        if (file.size > MAX) {
+          toast.error("El video del banner supera 3MB. Usa uno más corto o ligero.");
+          return;
+        }
+        const url = URL.createObjectURL(file);
+        const dur = await new Promise<number>((resolve) => {
+          const v = document.createElement("video");
+          v.preload = "metadata";
+          v.onloadedmetadata = () => resolve(v.duration || 0);
+          v.onerror = () => resolve(0);
+          v.src = url;
+        });
+        URL.revokeObjectURL(url);
+        if (dur > 5.5) {
+          toast.error("El video del banner debe durar 5 segundos o menos.");
+          return;
+        }
+        chat.updateMe({ banner: await readAsDataUrl(file), bannerColor: null });
+        toast.success("Banner de video actualizado");
+        return;
+      }
+
+      // GIF animado: se preserva tal cual (pasarlo por canvas lo congela)
+      if (file.type === "image/gif") {
+        if (file.size > MAX) {
+          toast.error("El GIF del banner supera 3MB. Prueba uno más ligero.");
+          return;
+        }
+        chat.updateMe({ banner: await readAsDataUrl(file), bannerColor: null });
+        toast.success("Banner GIF actualizado");
+        return;
+      }
+
+      // Imagen estática: se redimensiona/comprime
       const dataUrl = await downscaleImage(file, 1024, 0.8);
       chat.updateMe({ banner: dataUrl, bannerColor: null });
       toast.success("Banner actualizado");
     } catch {
-      toast.error("No se pudo procesar la imagen");
+      toast.error("No se pudo procesar el archivo");
     }
   };
 
@@ -671,7 +790,7 @@ export default function App() {
 
   const queueImage = (file: File) => {
     const previewUrl = URL.createObjectURL(file);
-    setPendingImage({ file, previewUrl, caption: "" });
+    setPendingImage({ file, previewUrl, caption: "", isGif: file.type === "image/gif", asSticker: false });
   };
 
   // ==========================================
@@ -721,7 +840,8 @@ export default function App() {
 
   const confirmSendImage = async () => {
     if (!pendingImage) return;
-    const caption = pendingImage.caption.trim() || undefined;
+    const asSticker = !!pendingImage.asSticker;
+    const caption = asSticker ? undefined : pendingImage.caption.trim() || undefined;
     const replyTo = buildReplyRef(replyingToRef.current);
     const previewUrl = pendingImage.previewUrl;
     const file = pendingImage.file;
@@ -731,14 +851,19 @@ export default function App() {
         const uploaded = await uploadFiles([file]);
         const uploadedUrl = chat.resolveMediaUrl(uploaded[0]?.url);
         if (!uploadedUrl) throw new Error("upload");
-        chat.emitMessage({ imageUrls: [uploadedUrl], text: caption, replyTo });
+        if (asSticker) {
+          // Sticker: sin globo de mensaje (fondo transparente, tamaño acotado)
+          chat.emitMessage({ kind: "sticker", imageUrls: [uploadedUrl], replyTo });
+        } else {
+          chat.emitMessage({ imageUrls: [uploadedUrl], text: caption, replyTo });
+        }
         URL.revokeObjectURL(previewUrl);
         return;
       } catch {
         toast.error("No se pudo subir la imagen; se muestra solo localmente.");
       }
     }
-    appendLocal({ authorId: selfId, kind: "image", imageUrl: previewUrl, text: caption, replyTo });
+    appendLocal({ authorId: selfId, kind: asSticker ? "sticker" : "image", imageUrl: previewUrl, text: caption, replyTo });
   };
 
   // Grabación de notas de voz (con pausa/reanudación nativa de MediaRecorder)
@@ -896,7 +1021,7 @@ export default function App() {
   // RENDER
   // ==========================================
   return (
-    <MotionConfig reducedMotion={ecoMode ? "always" : "user"}>
+    <MotionConfig reducedMotion={ecoMode || !appActive ? "always" : "user"}>
     <div className={`size-full min-h-screen ${t.bg} ${t.text} flex items-center justify-center font-mono transition-colors duration-500`}>
       <Toaster position="top-center" expand={false} richColors />
       <div
@@ -1181,6 +1306,7 @@ export default function App() {
           pendingImage={pendingImage}
           theme={t}
           onChangeCaption={(caption) => setPendingImage((p) => (p ? { ...p, caption } : p))}
+          onSetSticker={(asSticker) => setPendingImage((p) => (p ? { ...p, asSticker } : p))}
           onSend={confirmSendImage}
           onClose={() => {
             if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
