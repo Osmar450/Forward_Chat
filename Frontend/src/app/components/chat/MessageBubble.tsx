@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Plus, Reply, Smile, Sparkles, Star, Trash2 } from "lucide-react";
+import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Plus, Reply, Smile, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
@@ -12,6 +12,7 @@ import {
   STATUSES,
   Status,
   escapeRegExp,
+  isGif,
   messagePreview,
 } from "../../lib/chat";
 import { AudioPlayer } from "./AudioPlayer";
@@ -426,7 +427,25 @@ function MessageBubbleInner({
                 )}
                 {msg.kind === "image" && msg.imageUrl && (
                   <div className="px-2 pt-1">
-                    <img src={msg.imageUrl} alt={msg.text || "Imagen adjunta"} className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
+                    <div className="relative group/media inline-block">
+                      <img src={msg.imageUrl} alt={msg.text || "Imagen adjunta"} className="rounded-lg max-w-full max-h-64 object-cover" loading="lazy" />
+                      {/* Guardar GIF como sticker (cualquier GIF, propio o ajeno) */}
+                      {isGif(msg.imageUrl) && (
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSaveSticker(msg.imageUrl!);
+                          }}
+                          className="absolute bottom-1.5 right-1.5 p-1.5 rounded-full bg-black/55 text-white backdrop-blur-sm shadow-md border border-white/15 md:opacity-0 md:group-hover/media:opacity-100 transition-opacity"
+                          title="Guardar GIF como sticker"
+                          aria-label="Guardar GIF como sticker"
+                        >
+                          <Sticker className="size-3.5 text-white" />
+                        </motion.button>
+                      )}
+                    </div>
                     {msg.text && (
                       <div className={`px-2 pt-2 font-bubble ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere]`}>{renderBody(msg.text)}</div>
                     )}
@@ -516,13 +535,14 @@ function MessageBubbleInner({
         <AnimatePresence>
           {pickerOpen && (
             <>
-              <div className="fixed inset-0 z-30" onClick={() => { if (!ghostClick()) onClosePicker(); }} />
+              <div className="fixed inset-0 z-40" onClick={() => { if (!ghostClick()) onClosePicker(); }} />
               <motion.div
                 initial={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-40 max-w-[92vw] ${t.panel} border ${t.borderStrong} rounded-full shadow-2xl backdrop-blur`}
+                style={{ backgroundColor: getThemeBgColor(t) }}
+                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-50 max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
               >
                 {/* Barra horizontal tipo píldora: 6 iconos + botón "+" */}
                 <div className="flex items-center gap-0.5 px-1.5 py-1">

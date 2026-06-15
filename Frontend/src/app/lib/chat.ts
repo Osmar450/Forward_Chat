@@ -150,6 +150,10 @@ export const messagePreview = (kind: MessageKind, text?: string) => {
 /** Escapa metacaracteres para usar texto literal dentro de una RegExp. */
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Detecta si una URL/dataURL corresponde a un GIF (para animarlo / guardarlo). */
+export const isGif = (url?: string | null) =>
+  !!url && (/\.gif($|\?)/i.test(url) || url.startsWith("data:image/gif"));
+
 export const colorForUser = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -215,12 +219,22 @@ export const pickRecorderMimeType = () => {
   return AUDIO_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
 };
 
+const readFileAsDataURL = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    r.readAsDataURL(file);
+  });
+
 /**
  * Redimensiona una imagen en el navegador antes de guardarla como dataURL.
  * Ahorra ancho de banda y almacenamiento (avatares 256px, banners 1024px).
+ * Los GIF se devuelven intactos: pasarlos por canvas los congela (1 frame).
  */
-export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Promise<string> =>
-  new Promise((resolve, reject) => {
+export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Promise<string> => {
+  if (file.type === "image/gif") return readFileAsDataURL(file);
+  return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -240,6 +254,7 @@ export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Prom
     };
     img.src = url;
   });
+};
 
 /** Convierte el payload del servidor en un Message del cliente. */
 export const parseServerMessage = (

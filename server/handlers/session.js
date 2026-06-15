@@ -4,6 +4,7 @@ const { addUserSocket, removeUserSocket, blocksByUser, blockersOf } = require('.
 const { emitAll, emitToUser, broadcastPresence, sendFriendsList } = require('../realtime');
 const { voiceChannels, dmCallPeers, broadcastVoiceParticipants } = require('./calls');
 const { messageRateLimits, HISTORY_PAGE_SIZE } = require('./messages');
+const { compressBannerDataUrl } = require('../media');
 
 // ==========================================
 // SESIÓN: restaurar/crear perfil, presencia y desconexión
@@ -67,7 +68,11 @@ function register(io, socket) {
         const avatar = sanitizeMedia(profile?.avatar);
         if (avatar) user.avatar = avatar;
         const banner = sanitizeMedia(profile?.banner);
-        if (banner) user.banner = banner;
+        if (banner) {
+            user.banner = banner;
+            // Comprimir en segundo plano sin bloquear el arranque de sesión
+            compressBannerDataUrl(banner).then((c) => { if (c && c !== user.banner) { user.banner = c; scheduleSave(); } }).catch(() => {});
+        }
         if (profile?.bannerColor) user.bannerColor = String(profile.bannerColor).substring(0, 20);
         if (typeof profile?.bio === 'string') user.bio = cleanText(profile.bio, 200);
         if (profile?.status) user.status = profile.status;
@@ -83,13 +88,17 @@ function register(io, socket) {
         }
     }, 1500);
 
-    socket.on('set profile', (profile) => {
+    socket.on('set profile', async (profile) => {
         if (!socket.userId) return;
         const user = getOrCreateUser(socket.userId);
         if (typeof profile?.name === 'string' && profile.name.trim()) user.name = cleanText(profile.name.trim(), 30);
         if (profile?.color) user.color = profile.color;
         if ('avatar' in (profile || {})) user.avatar = sanitizeMedia(profile.avatar);
-        if ('banner' in (profile || {})) user.banner = sanitizeMedia(profile.banner);
+        if ('banner' in (profile || {})) {
+            const banner = sanitizeMedia(profile.banner);
+            // Compresión del servidor (sharp) para banners pesados (GIF/imagen)
+            user.banner = banner ? await compressBannerDataUrl(banner) : null;
+        }
         if ('bannerColor' in (profile || {})) user.bannerColor = profile.bannerColor ? String(profile.bannerColor).substring(0, 20) : null;
         if (typeof profile?.bio === 'string') user.bio = cleanText(profile.bio, 200);
         if (profile?.status && ['online', 'idle', 'dnd', 'invisible'].includes(profile.status)) user.status = profile.status;
