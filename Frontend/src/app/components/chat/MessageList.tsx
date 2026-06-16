@@ -76,11 +76,7 @@ export function MessageList({
   currentSearchId,
   serverHasMore,
   onLoadOlder,
-  openMenuFor,
-  onTogglePicker,
-  onClosePicker,
   onDelete,
-  onReact,
   onReply,
   onEdit,
   onViewProfile,
@@ -108,11 +104,7 @@ export function MessageList({
   /** El servidor aún tiene historial más antiguo (paginación por cursor) */
   serverHasMore: boolean;
   onLoadOlder: () => void;
-  openMenuFor: string | number | null;
-  onTogglePicker: (id: string | number) => void;
-  onClosePicker: () => void;
   onDelete: (id: string | number) => void;
-  onReact: (id: string | number, reactionId: string) => void;
   onReply: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onViewProfile: (id: string) => void;
@@ -295,12 +287,7 @@ export function MessageList({
                       receipt={receiptFor(m)}
                       isSearchCurrent={currentSearchId != null && m.id === currentSearchId}
                       highlightQuery={searchActive ? searchQuery : undefined}
-                      pickerBelow={idx < 2}
-                      pickerOpen={openMenuFor === m.id}
-                      onTogglePicker={onTogglePicker}
-                      onClosePicker={onClosePicker}
                       onDelete={onDelete}
-                      onReact={onReact}
                       onReply={onReply}
                       onEdit={onEdit}
                       onAvatarClick={onViewProfile}

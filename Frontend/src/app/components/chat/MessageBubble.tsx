@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Plus, Reply, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import React from "react";
+import { motion } from "motion/react";
+import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
 import {
@@ -45,12 +44,7 @@ function MessageBubbleInner({
   receipt,
   isSearchCurrent,
   highlightQuery,
-  pickerOpen,
-  pickerBelow,
-  onTogglePicker,
-  onClosePicker,
   onDelete,
-  onReact,
   onReply,
   onEdit,
   onAvatarClick,
@@ -67,141 +61,19 @@ function MessageBubbleInner({
   isSearchCurrent: boolean;
   /** Texto de búsqueda activo: las coincidencias se resaltan en la burbuja */
   highlightQuery?: string;
-  pickerOpen: boolean;
-  pickerBelow?: boolean;
-  onTogglePicker: (id: string | number) => void;
-  onClosePicker: () => void;
   onDelete: (id: string | number) => void;
-  onReact: (id: string | number, reactionId: string) => void;
   onReply: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onAvatarClick: (authorId: string) => void;
   onSaveSticker: (url: string) => void;
   formatText: (text?: string) => React.ReactNode;
 }) {
-  const longPressTimer = useRef<number | null>(null);
-  const longPressedRef = useRef(false);
-  const swipeStartXRef = useRef<number | null>(null);
-  const movedRef = useRef(false);
-  const interactiveTargetRef = useRef(false);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const [pickerExpanded, setPickerExpanded] = useState(false);
-  // Físicas de swipe: umbral bajo y sensible + resistencia progresiva
-  const SWIPE_TRIGGER = 44;
-  const SWIPE_MAX = 96;
-  const SWIPE_SOFT = 64; // a partir de aquí el arrastre ofrece resistencia
-
-  // Acciones siempre visibles para mensajes propios; la ventana de 15 min
-  // la impone el servidor (si expiró, el usuario recibe un aviso claro).
+  // La ventana de 15 min para editar/borrar la valida el servidor; aquí solo
+  // se decide qué botones mostrar.
   const canEdit = isMine && !msg.deleted && msg.kind === "text";
   const canDelete = isMine && !msg.deleted;
 
-  const startLongPress = () => {
-    longPressedRef.current = false;
-    longPressTimer.current = window.setTimeout(() => {
-      longPressedRef.current = true;
-      // Long-press: abre el menú YA expandido (reacciones + acciones)
-      setPickerExpanded(true);
-      if (!pickerOpen) onTogglePicker(msg.id);
-    }, 380);
-  };
-  const cancelLongPress = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (msg.deleted) return;
-    // Los controles internos (links, audio, guardar sticker) manejan su propio tap
-    interactiveTargetRef.current = !!(e.target as HTMLElement).closest("button, a, [role='slider']");
-    movedRef.current = false;
-    swipeStartXRef.current = e.clientX;
-    if (!interactiveTargetRef.current) startLongPress();
-  };
-
-  // En Android el long-press dispara contextmenu (y a veces cancela los
-  // pointer events antes de los 400ms del timer). Lo usamos como segunda vía
-  // para abrir el menú de reacciones; el guard evita el doble toggle.
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (!msg.deleted && !longPressedRef.current) {
-      longPressedRef.current = true;
-      cancelLongPress();
-      setPickerExpanded(true);
-      if (!pickerOpen) onTogglePicker(msg.id);
-    }
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (swipeStartXRef.current === null) return;
-    const raw = e.clientX - swipeStartXRef.current;
-    // Tolerancia amplia: el jitter del dedo ya no cancela el long-press
-    if (Math.abs(raw) > 12) {
-      cancelLongPress();
-      movedRef.current = true;
-      if (!swiping) setSwiping(true);
-    }
-    const directional = isMine ? Math.min(0, raw) : Math.max(0, raw);
-    // Resistencia progresiva: 1:1 hasta SWIPE_SOFT, luego se amortigua (sensación nativa)
-    const mag = Math.abs(directional);
-    const eased = mag <= SWIPE_SOFT ? mag : SWIPE_SOFT + (mag - SWIPE_SOFT) * 0.35;
-    setSwipeOffset(Math.sign(directional) * Math.min(SWIPE_MAX, eased));
-  };
-
-  const finishSwipe = () => {
-    if (!msg.deleted && Math.abs(swipeOffset) >= SWIPE_TRIGGER) onReply(msg);
-    swipeStartXRef.current = null;
-    setSwiping(false);
-    setSwipeOffset(0);
-  };
-
-  const handlePointerUp = () => {
-    cancelLongPress();
-    // Tap simple (sin arrastre ni long-press): abre el menú de acciones.
-    // Es la vía más fiable en cualquier dispositivo, además del long-press.
-    const wasTap =
-      !longPressedRef.current && !movedRef.current && !interactiveTargetRef.current && Math.abs(swipeOffset) < 6;
-    finishSwipe();
-    if (wasTap && !msg.deleted && !pickerOpen) onTogglePicker(msg.id);
-  };
-
-  const handlePointerLeave = () => {
-    cancelLongPress();
-    swipeStartXRef.current = null;
-    setSwiping(false);
-    setSwipeOffset(0);
-  };
-
   const reactionEntries = Object.entries(msg.reactions || {}).filter(([, users]) => users.length > 0);
-
-  // Escudo anti "ghost click": en Android, el click sintético que sigue al
-  // tap que ABRIÓ el selector aterriza sobre el overlay/botones recién
-  // montados y lo cerraba al instante (parecía que el botón "no funcionaba").
-  const pickerOpenedAtRef = useRef(0);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (pickerOpen) pickerOpenedAtRef.current = Date.now();
-    else setPickerExpanded(false); // al cerrar, colapsar el panel extendido del "+"
-  }, [pickerOpen]);
-  const ghostClick = () => Date.now() - pickerOpenedAtRef.current < 300;
-
-  // Cierre por toque fuera del picker SIN un backdrop a pantalla completa: un
-  // overlay fixed roba los clicks a los botones del picker (vive en otro
-  // contexto de apilamiento por los transforms de las burbujas).
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const onDocPointer = (e: PointerEvent) => {
-      if (ghostClick()) return;
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) onClosePicker();
-    };
-    document.addEventListener("pointerdown", onDocPointer, true);
-    return () => document.removeEventListener("pointerdown", onDocPointer, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickerOpen]);
-
 
   /**
    * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
@@ -240,6 +112,43 @@ function MessageBubbleInner({
     </span>
   );
 
+  // Botones de acción inline, SIEMPRE visibles (sin hover ni long-press)
+  const actionButtons = !msg.deleted && (
+    <span className="flex items-center gap-0.5 self-center shrink-0">
+      <motion.button
+        whileTap={{ scale: 0.85 }}
+        onClick={() => onReply(msg)}
+        className={`p-1.5 rounded-full ${t.iconBtn} ${t.accentText}`}
+        aria-label="Responder"
+        title="Responder"
+      >
+        <Reply className="size-4" />
+      </motion.button>
+      {canEdit && (
+        <motion.button
+          whileTap={{ scale: 0.85 }}
+          onClick={() => onEdit(msg)}
+          className={`p-1.5 rounded-full ${t.iconBtn} ${t.textMuted}`}
+          aria-label="Editar mensaje"
+          title="Editar"
+        >
+          <Pencil className="size-4" />
+        </motion.button>
+      )}
+      {canDelete && (
+        <motion.button
+          whileTap={{ scale: 0.85 }}
+          onClick={() => onDelete(msg.id)}
+          className={`p-1.5 rounded-full ${t.iconBtn} text-red-400`}
+          aria-label="Eliminar mensaje"
+          title="Eliminar"
+        >
+          <Trash2 className="size-4" />
+        </motion.button>
+      )}
+    </span>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -247,11 +156,10 @@ function MessageBubbleInner({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15, ease: "easeOut" }}
       data-msgid={msg.id}
-      className={`cv-row flex items-end gap-2 group ${isMine ? "justify-end" : "justify-start"}`}
+      className={`cv-row flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}
     >
       {!isMine && (
         <motion.button
-          whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.92 }}
           onClick={() => onAvatarClick(author.id)}
           className="relative size-8 rounded-full flex items-center justify-center shrink-0 text-white overflow-hidden font-pixel-ui text-sm shadow-md"
@@ -264,50 +172,16 @@ function MessageBubbleInner({
       )}
 
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
-        {!msg.deleted && (
-          <motion.span
-            animate={{
-              opacity: Math.min(Math.abs(swipeOffset) / SWIPE_TRIGGER, 1),
-              scale: 0.8 + Math.min(Math.abs(swipeOffset) / SWIPE_TRIGGER, 1) * 0.35,
-            }}
-            transition={{ type: "spring", stiffness: 380, damping: 20 }}
-            className={`absolute top-1/2 -translate-y-1/2 ${isMine ? "left-0 -translate-x-7" : "right-0 translate-x-7"} ${t.accentText}`}
-          >
-            <Reply className="size-4" />
-          </motion.span>
-        )}
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
-          {/* Única acción por defecto: Responder. El resto (reaccionar, editar,
-              borrar) vive en el menú unificado que abre el long-press. */}
-          {!msg.deleted && (
-            <motion.button
-              whileTap={{ scale: 0.85 }}
-              transition={{ type: "spring", stiffness: 400, damping: 18 }}
-              onClick={() => onReply(msg)}
-              className={`p-1.5 rounded-full self-center ${t.iconBtn} ${t.accentText}`}
-              aria-label="Responder"
-            >
-              <Reply className="size-4" />
-            </motion.button>
-          )}
+          {actionButtons}
 
-          <motion.div
-            animate={{ x: swipeOffset }}
-            transition={swiping ? { type: "spring", stiffness: 900, damping: 50, mass: 0.4 } : { type: "spring", stiffness: 550, damping: 32 }}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerLeave}
-            onPointerLeave={handlePointerLeave}
-            onContextMenu={handleContextMenu}
-            style={{
-              ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker" ? { borderLeft: `3px solid ${author.color}` } : {}),
-              touchAction: "pan-y",
-              WebkitTouchCallout: "none",
-              WebkitUserSelect: "none",
-              userSelect: "none",
-            }}
-            className={`${msg.kind === "sticker" && !msg.deleted ? `max-w-full relative select-none ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden select-none ${msg.pending ? "opacity-60" : ""} ${
+          <div
+            style={
+              !msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker"
+                ? { borderLeft: `3px solid ${author.color}` }
+                : undefined
+            }
+            className={`${msg.kind === "sticker" && !msg.deleted ? `max-w-full relative ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden ${msg.pending ? "opacity-60" : ""} ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
             }`} ${isSearchCurrent ? `ring-2 ${t.accentRing} ring-offset-1 ring-offset-transparent` : ""}`}
           >
@@ -319,8 +193,6 @@ function MessageBubbleInner({
             ) : (
               <>
                 {msg.replyTo && (
-                  /* Cita elegante: borde izquierdo marcado + fondo semitransparente,
-                     claramente diferenciada del mensaje nuevo sin romper el padding */
                   <div
                     className={`mx-2 mt-2 rounded-md rounded-l-sm pl-2.5 pr-2.5 py-1.5 border-l-[3px] ${
                       isMine
@@ -349,8 +221,6 @@ function MessageBubbleInner({
                   </div>
                 )}
                 {msg.kind === "text" && (
-                  /* Texto + hora estilo WhatsApp: en mensajes cortos comparten
-                     línea; en largos la hora baja sola alineada a la derecha. */
                   <div className={`px-3.5 ${showAuthor ? "pt-0.5" : "pt-2"} pb-1.5 flex flex-wrap items-end gap-x-2`}>
                     <div className={`min-w-0 font-bubble font-light text-[15px] leading-snug ${isMine ? "text-white" : t.text} break-words [word-break:break-word] [overflow-wrap:anywhere] whitespace-pre-wrap`}>
                       {renderBody(msg.text)}
@@ -367,12 +237,10 @@ function MessageBubbleInner({
                   </div>
                 )}
                 {msg.kind === "text" && msg.linkPreview && (
-                  /* Rich link preview (OpenGraph) servido por el backend */
                   <a
                     href={msg.linkPreview.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onPointerDown={(e) => e.stopPropagation()}
                     className={`block mx-2 mb-2 rounded-lg overflow-hidden border transition-opacity hover:opacity-85 ${
                       isMine ? "bg-black/20 border-white/20" : `${t.isLight ? "bg-black/5" : "bg-white/5"} ${t.border}`
                     }`}
@@ -412,7 +280,6 @@ function MessageBubbleInner({
                       {/* Guardar GIF como sticker (cualquier GIF, propio o ajeno) */}
                       {isGif(msg.imageUrl) && (
                         <motion.button
-                          whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -441,16 +308,14 @@ function MessageBubbleInner({
                     />
                     {!isMine && (
                       <motion.button
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={(e) => {
                           e.stopPropagation();
                           onSaveSticker(msg.imageUrl!);
                         }}
-                        className="absolute bottom-1 right-1 p-1.5 rounded-full bg-black/50 text-white backdrop-blur-sm shadow-md border border-white/10 opacity-0 group-hover/sticker:opacity-100 transition-opacity"
+                        className="absolute bottom-1 right-1 p-1.5 rounded-full bg-black/50 text-white backdrop-blur-sm shadow-md border border-white/10 md:opacity-0 md:group-hover/sticker:opacity-100 transition-opacity"
                         title="Guardar sticker"
+                        aria-label="Guardar sticker"
                       >
                         <Star className="size-3 text-white" />
                       </motion.button>
@@ -467,18 +332,12 @@ function MessageBubbleInner({
                 )}
               </>
             )}
-          </motion.div>
+          </div>
         </div>
 
-        {/* Chips de reacciones (sincronizadas, con conteo) */}
+        {/* Reacciones existentes (solo lectura) */}
         {reactionEntries.length > 0 && (
-          <motion.div
-            layout
-            initial={{ scale: 0, y: -4 }}
-            animate={{ scale: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 18 }}
-            className="-mt-2 mr-2 flex items-center gap-1 flex-wrap max-w-full"
-          >
+          <div className="-mt-2 mr-2 flex items-center gap-1 flex-wrap max-w-full">
             {reactionEntries.map(([rid, users]) => {
               const mineToo = users.includes(selfId);
               let content: React.ReactNode = null;
@@ -491,151 +350,21 @@ function MessageBubbleInner({
                 content = <Icon className={`size-3.5 ${R.color}`} />;
               }
               return (
-                <motion.button
+                <span
                   key={rid}
-                  initial={{ scale: 0, rotate: -45 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  whileTap={{ scale: 0.85 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 18 }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); onReact(msg.id, rid); }}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border shadow-md ${t.panel} ${
-                    mineToo ? t.borderStrong : t.border
-                  }`}
-                  title={mineToo ? "Quitar mi reacción" : "Reaccionar igual"}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border shadow-md ${t.panel} ${mineToo ? t.borderStrong : t.border}`}
                 >
                   {content}
                   {users.length > 1 && <span className={`text-[10px] tabular-nums ${t.textMuted}`}>{users.length}</span>}
-                </motion.button>
+                </span>
               );
             })}
-          </motion.div>
+          </div>
         )}
-
-        {/* Selector de reacciones */}
-        <AnimatePresence>
-          {pickerOpen && (
-            <>
-              <motion.div
-                ref={pickerRef}
-                initial={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: pickerBelow ? -10 : 10, scale: 0.85 }}
-                transition={{ type: "spring", stiffness: 400, damping: 22 }}
-                style={{ backgroundColor: getThemeBgColor(t) }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-[9999] pointer-events-auto max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
-              >
-                {/* Barra horizontal tipo píldora: 6 iconos + botón "+" */}
-                <div className="flex items-center gap-0.5 px-1.5 py-1">
-                  {REACTIONS.slice(0, 6).map((r, i) => {
-                    const rid = `i:${r.key}`;
-                    const Icon = r.icon;
-                    const active = (msg.reactions?.[rid] || []).includes(selfId);
-                    return (
-                      <motion.button
-                        key={r.key}
-                        initial={{ opacity: 0, y: 8, scale: 0.5 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{ delay: i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
-                        whileHover={{ scale: 1.25, y: -2 }}
-                        whileTap={{ scale: 0.85 }}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
-                        className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
-                        aria-label={r.label}
-                      >
-                        <Icon className={`size-5 ${r.color}`} />
-                      </motion.button>
-                    );
-                  })}
-                  <motion.button
-                    whileHover={{ scale: 1.15 }}
-                    whileTap={{ scale: 0.85 }}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) setPickerExpanded((v) => !v); }}
-                    className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${pickerExpanded ? t.accentSoft : t.iconBtn}`}
-                    aria-label="Más reacciones y acciones"
-                    aria-expanded={pickerExpanded}
-                  >
-                    <Plus className={`size-5 transition-transform ${pickerExpanded ? "rotate-45" : ""}`} />
-                  </motion.button>
-                </div>
-
-                {/* Panel extendido del "+": reacciones extra + acciones */}
-                <AnimatePresence>
-                  {pickerExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className={`mx-1.5 mt-0.5 pt-1.5 border-t ${t.border}`}>
-                        {REACTIONS.length > 6 && (
-                          <div className="flex items-center justify-center gap-0.5 pb-1">
-                            {REACTIONS.slice(6).map((r) => {
-                              const rid = `i:${r.key}`;
-                              const Icon = r.icon;
-                              const active = (msg.reactions?.[rid] || []).includes(selfId);
-                              return (
-                                <motion.button
-                                  key={r.key}
-                                  whileTap={{ scale: 0.85 }}
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReact(msg.id, rid); onClosePicker(); }}
-                                  className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
-                                  aria-label={r.label}
-                                >
-                                  <Icon className={`size-5 ${r.color}`} />
-                                </motion.button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1 pb-1.5">
-                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReply(msg); onClosePicker(); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
-                            <Reply className="size-3.5" /> Responder
-                          </button>
-                          {!!msg.text && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                navigator.clipboard?.writeText(msg.text || "")
-                                  .then(() => toast.success("Mensaje copiado"))
-                                  .catch(() => toast.error("No se pudo copiar"));
-                                onClosePicker();
-                              }}
-                              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}
-                            >
-                              <CopyIcon className="size-3.5" /> Copiar
-                            </button>
-                          )}
-                          {canEdit && (
-                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(msg); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
-                              <Pencil className="size-3.5" /> Editar
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(msg.id); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}>
-                              <Trash2 className="size-3.5" /> Eliminar
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
       </div>
 
       {isMine && (
         <motion.button
-          whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.92 }}
           onClick={() => onAvatarClick(author.id)}
           className="relative size-8 rounded-full flex items-center justify-center shrink-0 text-white overflow-hidden font-pixel-ui text-sm shadow-md"

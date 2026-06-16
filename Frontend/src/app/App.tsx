@@ -159,7 +159,6 @@ export default function App() {
   const [showFriends, setShowFriends] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
-  const [openMenuFor, setOpenMenuFor] = useState<string | number | null>(null);
 
   // Composer
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -829,7 +828,6 @@ export default function App() {
     setReplyingTo(null);
     setShowStickers(false);
     setEditingMsg(m);
-    setOpenMenuFor(null);
   };
 
   const submitEdit = (text: string) => {
@@ -1243,21 +1241,10 @@ export default function App() {
               currentSearchId={currentSearchId}
               serverHasMore={!!historyMore[activeChat!]}
               onLoadOlder={chat.requestOlderMessages}
-              openMenuFor={openMenuFor}
-              onTogglePicker={(id) => setOpenMenuFor((cur) => (cur === id ? null : id))}
-              onClosePicker={() => setOpenMenuFor(null)}
               onDelete={(id) => {
-                // Confirmación de borrado (toggleable a futuro vía appSettings.warnOnDelete)
-                if (appSettings.warnOnDelete && !window.confirm("¿Seguro que deseas eliminar este mensaje?")) {
-                  setOpenMenuFor(null);
-                  return;
-                }
+                // Confirmación de borrado (toggleable vía appSettings.warnOnDelete)
+                if (appSettings.warnOnDelete && !window.confirm("¿Seguro que deseas eliminar este mensaje?")) return;
                 chat.deleteMessage(id);
-                setOpenMenuFor(null);
-              }}
-              onReact={(id, rid) => {
-                chat.toggleReaction(id, rid);
-                setOpenMenuFor(null);
               }}
               onReply={(m) => setReplyingTo(m)}
               onEdit={startEditing}
