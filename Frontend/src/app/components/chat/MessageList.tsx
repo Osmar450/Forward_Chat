@@ -77,6 +77,7 @@ export function MessageList({
   serverHasMore,
   onLoadOlder,
   onDelete,
+  onReact,
   onReply,
   onEdit,
   onViewProfile,
@@ -105,6 +106,7 @@ export function MessageList({
   serverHasMore: boolean;
   onLoadOlder: () => void;
   onDelete: (id: string | number) => void;
+  onReact: (id: string | number, reactionId: string) => void;
   onReply: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onViewProfile: (id: string) => void;
@@ -288,6 +290,7 @@ export function MessageList({
                       isSearchCurrent={currentSearchId != null && m.id === currentSearchId}
                       highlightQuery={searchActive ? searchQuery : undefined}
                       onDelete={onDelete}
+                      onReact={onReact}
                       onReply={onReply}
                       onEdit={onEdit}
                       onAvatarClick={onViewProfile}

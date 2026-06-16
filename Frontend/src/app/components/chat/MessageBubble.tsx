@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Ban, Check, CheckCheck, Clock3, Pencil, Reply, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
@@ -15,6 +15,7 @@ import {
   messagePreview,
 } from "../../lib/chat";
 import { AudioPlayer } from "./AudioPlayer";
+import { ReactionPicker, Reaction, ReactionKey } from "./ReactionPicker";
 
 export function StatusDot({ status, theme: t, size = "default" }: { status: Status; theme: ThemeTokens; size?: "default" | "large" }) {
   const dim = size === "large" ? "size-4" : "size-3";
@@ -45,6 +46,7 @@ function MessageBubbleInner({
   isSearchCurrent,
   highlightQuery,
   onDelete,
+  onReact,
   onReply,
   onEdit,
   onAvatarClick,
@@ -62,12 +64,46 @@ function MessageBubbleInner({
   /** Texto de búsqueda activo: las coincidencias se resaltan en la burbuja */
   highlightQuery?: string;
   onDelete: (id: string | number) => void;
+  onReact: (id: string | number, reactionId: string) => void;
   onReply: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onAvatarClick: (authorId: string) => void;
   onSaveSticker: (url: string) => void;
   formatText: (text?: string) => React.ReactNode;
 }) {
+  // Long-press (500ms) abre SOLO el ReactionPicker. El scroll/movimiento cancela.
+  const [showPicker, setShowPicker] = useState(false);
+  const pressTimer = useRef<number | null>(null);
+
+  const startPress = () => {
+    if (msg.deleted) return;
+    clearPress();
+    pressTimer.current = window.setTimeout(() => {
+      setShowPicker(true);
+      try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
+    }, 500);
+  };
+  const clearPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  // Una reacción por usuario: el servidor hace toggle/replace; aquí solo se
+  // envía el id elegido. currentReactions resalta la activa del usuario.
+  const myReactions: Reaction[] = Object.entries(msg.reactions || {})
+    .filter(([, users]) => users.includes(selfId))
+    .map(([rid]) =>
+      rid.startsWith("e:")
+        ? { kind: "emoji" as const, char: rid.slice(2) }
+        : { kind: "icon" as const, key: rid.slice(2) as ReactionKey }
+    );
+
+  const handleSelectReaction = (reaction: Reaction) => {
+    const rid = reaction.kind === "icon" ? `i:${reaction.key}` : `e:${reaction.char}`;
+    onReact(msg.id, rid);
+  };
   // La ventana de 15 min para editar/borrar la valida el servidor; aquí solo
   // se decide qué botones mostrar.
   const canEdit = isMine && !msg.deleted && msg.kind === "text";
@@ -172,15 +208,31 @@ function MessageBubbleInner({
       )}
 
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
+        {/* Reaction picker (solo se abre con long-press) */}
+        <ReactionPicker
+          isOpen={showPicker}
+          onClose={() => setShowPicker(false)}
+          onSelect={handleSelectReaction}
+          position="top"
+          currentReactions={myReactions}
+        />
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
           {actionButtons}
 
           <div
-            style={
-              !msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker"
+            onTouchStart={startPress}
+            onTouchEnd={clearPress}
+            onTouchMove={clearPress}
+            onMouseDown={startPress}
+            onMouseUp={clearPress}
+            onMouseLeave={clearPress}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{
+              ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker"
                 ? { borderLeft: `3px solid ${author.color}` }
-                : undefined
-            }
+                : {}),
+              touchAction: "pan-y",
+            }}
             className={`${msg.kind === "sticker" && !msg.deleted ? `max-w-full relative ${msg.pending ? "opacity-60" : ""}` : `max-w-full min-w-0 rounded-2xl overflow-hidden ${msg.pending ? "opacity-60" : ""} ${
               msg.deleted ? `${t.iconBtn} italic` : msg.isBot ? "bg-gradient-to-br from-purple-500/20 to-purple-600/10 backdrop-blur-sm border border-purple-500/50 shadow-[0_0_20px_rgba(139,92,246,0.3),0_0_40px_rgba(139,92,246,0.1)]" : isMine ? t.mineBubble : t.otherBubble
             }`} ${isSearchCurrent ? `ring-2 ${t.accentRing} ring-offset-1 ring-offset-transparent` : ""}`}

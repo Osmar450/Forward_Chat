@@ -1246,6 +1246,7 @@ export default function App() {
                 if (appSettings.warnOnDelete && !window.confirm("¿Seguro que deseas eliminar este mensaje?")) return;
                 chat.deleteMessage(id);
               }}
+              onReact={(id, rid) => chat.toggleReaction(id, rid)}
               onReply={(m) => setReplyingTo(m)}
               onEdit={startEditing}
               onViewProfile={(id) => setViewProfileId(id)}
