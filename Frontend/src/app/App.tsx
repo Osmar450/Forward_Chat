@@ -250,6 +250,25 @@ export default function App() {
   useEffect(() => { localStorage.setItem("chatNicknames", JSON.stringify(nicknames)); }, [nicknames]);
   useEffect(() => { localStorage.setItem("chatBlocked", JSON.stringify(blocked)); }, [blocked]);
 
+  // Ajustes de usuario (preparado para togglear más opciones a futuro)
+  const [appSettings] = useState<{ warnOnDelete: boolean }>(() => {
+    try {
+      return { warnOnDelete: true, ...JSON.parse(localStorage.getItem("chatSettings") || "{}") };
+    } catch {
+      return { warnOnDelete: true };
+    }
+  });
+
+  // Apodos: el nombre mostrado en burbujas y lista de DMs usa el apodo si existe
+  const displayParticipants = useMemo(() => {
+    if (!Object.keys(nicknames).length) return participants;
+    const out: Record<string, Participant> = {};
+    for (const [id, p] of Object.entries(participants)) {
+      out[id] = nicknames[id] ? { ...p, name: nicknames[id] } : p;
+    }
+    return out;
+  }, [participants, nicknames]);
+
   // Sincronizar mi lista de bloqueados con el servidor (privacidad de avatar):
   // a quien yo bloqueo se le oculta mi foto de perfil.
   useEffect(() => {
@@ -1156,7 +1175,7 @@ export default function App() {
           <HomeScreen
             theme={t}
             selfId={selfId}
-            participants={participants}
+            participants={displayParticipants}
             dmList={dmList}
             lastOf={lastOf}
             unread={unread}
@@ -1186,7 +1205,7 @@ export default function App() {
               activeChat={activeChat!}
               activePeer={activePeer}
               messages={activeMessages}
-              participants={participants}
+              participants={displayParticipants}
               selfId={selfId}
               scrollRef={scrollRef}
               isAtBottom={isAtBottom}
@@ -1204,6 +1223,11 @@ export default function App() {
               onTogglePicker={(id) => setOpenMenuFor((cur) => (cur === id ? null : id))}
               onClosePicker={() => setOpenMenuFor(null)}
               onDelete={(id) => {
+                // Confirmación de borrado (toggleable a futuro vía appSettings.warnOnDelete)
+                if (appSettings.warnOnDelete && !window.confirm("¿Seguro que deseas eliminar este mensaje?")) {
+                  setOpenMenuFor(null);
+                  return;
+                }
                 chat.deleteMessage(id);
                 setOpenMenuFor(null);
               }}

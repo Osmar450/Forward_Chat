@@ -417,7 +417,7 @@ export function Composer({
                 enterKeyHint="send"
                 placeholder={isEditing ? "Edita tu mensaje..." : activeChat === LOBBY ? "Escribe un mensaje..." : `Mensaje para ${activePeer?.name || "..."}`}
                 aria-label={isEditing ? "Editar mensaje" : "Escribir mensaje"}
-                className={`w-full ${t.inputBg} border ${isEditing ? t.borderStrong : t.border} rounded-xl px-4 py-2.5 outline-none placeholder:opacity-50 min-w-0 ${t.text}`}
+                className={`w-full ${t.inputBg} border ${isEditing ? t.borderStrong : t.border} rounded-xl px-4 py-2.5 outline-none placeholder:opacity-50 min-w-0 ${t.text} font-bubble font-light text-[15px] tracking-normal`}
               />
             </div>
             <motion.button

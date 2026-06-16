@@ -87,6 +87,10 @@ function MessageBubbleInner({
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [pickerExpanded, setPickerExpanded] = useState(false);
+  // Menú móvil compacto (solo 2 acciones) que aparece tras un long-press
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const mobileMenuOpenedAtRef = useRef(0);
+  const mobileMenuRef = useRef<HTMLSpanElement>(null);
   // Físicas de swipe: umbral bajo y sensible + resistencia progresiva
   const SWIPE_TRIGGER = 44;
   const SWIPE_MAX = 96;
@@ -101,7 +105,9 @@ function MessageBubbleInner({
     longPressedRef.current = false;
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
-      onTogglePicker(msg.id);
+      // Long-press: menú móvil con solo 2 acciones (Eliminar + Reaccionar)
+      mobileMenuOpenedAtRef.current = Date.now();
+      setMobileMenu(true);
     }, 400);
   };
   const cancelLongPress = () => {
@@ -128,7 +134,8 @@ function MessageBubbleInner({
     if (!msg.deleted && !longPressedRef.current) {
       longPressedRef.current = true;
       cancelLongPress();
-      onTogglePicker(msg.id);
+      mobileMenuOpenedAtRef.current = Date.now();
+      setMobileMenu(true);
     }
   };
 
@@ -156,11 +163,7 @@ function MessageBubbleInner({
 
   const handlePointerUp = () => {
     cancelLongPress();
-    // Tap simple sobre la burbuja (sin arrastre, sin long-press y fuera de
-    // controles internos) también abre el menú de reacciones
-    const wasTap = !longPressedRef.current && !movedRef.current && !interactiveTargetRef.current && Math.abs(swipeOffset) < 6;
     finishSwipe();
-    if (wasTap && !msg.deleted) onTogglePicker(msg.id);
   };
 
   const handlePointerLeave = () => {
@@ -196,6 +199,17 @@ function MessageBubbleInner({
     return () => document.removeEventListener("pointerdown", onDocPointer, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerOpen]);
+
+  // Cierre del menú móvil de 2 acciones al tocar fuera
+  useEffect(() => {
+    if (!mobileMenu) return;
+    const onDocPointer = (e: PointerEvent) => {
+      if (Date.now() - mobileMenuOpenedAtRef.current < 300) return;
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) setMobileMenu(false);
+    };
+    document.addEventListener("pointerdown", onDocPointer, true);
+    return () => document.removeEventListener("pointerdown", onDocPointer, true);
+  }, [mobileMenu]);
 
   /**
    * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
@@ -257,8 +271,9 @@ function MessageBubbleInner({
         </motion.button>
       )}
 
+      {/* Desktop: acciones al pasar el cursor (ocultas en móvil) */}
       {isMine && !msg.deleted && (canEdit || canDelete) && (
-        <span className="flex items-center gap-0.5 self-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <span className="hidden md:flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity">
           {canEdit && (
             <motion.button
               whileHover={{ scale: 1.15 }}
@@ -286,6 +301,34 @@ function MessageBubbleInner({
         </span>
       )}
 
+      {/* Móvil: long-press muestra solo 2 acciones (Eliminar + Reaccionar) */}
+      {mobileMenu && !msg.deleted && (
+        <span ref={mobileMenuRef} className="flex md:hidden items-center gap-1 self-center">
+          {canDelete && (
+            <motion.button
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileTap={{ scale: 0.85 }}
+              onClick={() => { setMobileMenu(false); onDelete(msg.id); }}
+              className={`p-2.5 rounded-full ${t.iconBtn} text-red-400 shadow-lg`}
+              aria-label="Eliminar mensaje"
+            >
+              <Trash2 className="size-4" />
+            </motion.button>
+          )}
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            whileTap={{ scale: 0.85 }}
+            onClick={() => { setMobileMenu(false); onTogglePicker(msg.id); }}
+            className={`p-2.5 rounded-full ${t.iconBtn} ${t.accentText} shadow-lg`}
+            aria-label="Reaccionar"
+          >
+            <Smile className="size-4" />
+          </motion.button>
+        </span>
+      )}
+
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
         {!msg.deleted && (
           <motion.span
@@ -301,7 +344,7 @@ function MessageBubbleInner({
         )}
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
           {!msg.deleted && (
-            <span className="flex items-center gap-0.5 self-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+            <span className="hidden md:flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity">
               <motion.button
                 whileHover={{ scale: 1.2, rotate: -8 }}
                 whileTap={{ scale: 0.85, rotate: 12 }}
@@ -626,12 +669,14 @@ function MessageBubbleInner({
                           </div>
                         )}
                         <div className="flex items-center gap-1 pb-1.5">
-                          <button onClick={() => { onReply(msg); onClosePicker(); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
+                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReply(msg); onClosePicker(); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
                             <Reply className="size-3.5" /> Responder
                           </button>
                           {!!msg.text && (
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 navigator.clipboard?.writeText(msg.text || "")
                                   .then(() => toast.success("Mensaje copiado"))
                                   .catch(() => toast.error("No se pudo copiar"));
@@ -643,12 +688,12 @@ function MessageBubbleInner({
                             </button>
                           )}
                           {canEdit && (
-                            <button onClick={() => onEdit(msg)} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
+                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(msg); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-xs`}>
                               <Pencil className="size-3.5" /> Editar
                             </button>
                           )}
                           {canDelete && (
-                            <button onClick={() => onDelete(msg.id)} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}>
+                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(msg.id); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg ${t.iconBtn} text-red-400 text-xs`}>
                               <Trash2 className="size-3.5" /> Eliminar
                             </button>
                           )}
