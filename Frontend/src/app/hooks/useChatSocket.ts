@@ -35,6 +35,35 @@ import {
   TypingPayload,
   chatKeyFromScope,
 } from "../lib/socketEvents";
+import { idbGet, idbSet } from "../lib/idbStore";
+
+// Solo texto/colores en localStorage; el avatar/banner (base64 pesado) van a
+// IndexedDB para evitar QuotaExceededError al guardar 'chatProfile'.
+const PROFILE_KEY = "chatProfile";
+const PROFILE_MEDIA_KEY = "chatProfileMedia";
+type SlimProfile = { userId?: string; name?: string; color?: string; bannerColor?: string | null; bio?: string; status?: string };
+const slimProfile = (p: Record<string, unknown>): SlimProfile => ({
+  userId: p.userId as string,
+  name: p.name as string,
+  color: p.color as string,
+  bannerColor: (p.bannerColor as string) ?? null,
+  bio: p.bio as string,
+  status: p.status as string,
+});
+const readSlimProfile = (): (SlimProfile & { avatar?: string | null; banner?: string | null }) | null => {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    // Migración: si quedó base64 de una versión vieja, purgarlo de localStorage
+    if (p && (p.avatar || p.banner)) {
+      try { localStorage.setItem(PROFILE_KEY, JSON.stringify(slimProfile(p))); } catch { /* noop */ }
+    }
+    return p;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Capa de tiempo real de ForwardChat: TODA la lógica de Socket.IO vive aquí
@@ -235,12 +264,9 @@ export function useChatSocket(options: {
     newSocket.on("connect", () => {
       setIsConnected(true);
       isConnectedRef.current = true;
-      let profile: Partial<SessionProfilePayload> = {};
-      try {
-        const saved = localStorage.getItem("chatProfile");
-        if (saved) profile = JSON.parse(saved);
-      } catch { /* sin perfil guardado */ }
-      newSocket.emit("restore profile", profile);
+      // Restaurar identidad/texto (slim). El avatar/banner los tiene el servidor
+      // en su store y los devuelve en 'session profile'.
+      newSocket.emit("restore profile", readSlimProfile() || {});
       // Recuperación tras reconexión: re-sincronizar el DM abierto y avisar
       if (everConnectedRef.current) {
         if (activeChatRef.current && activeChatRef.current !== LOBBY) {
@@ -516,34 +542,37 @@ export function useChatSocket(options: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meProfile?.name, meProfile?.avatar, meProfile?.color, meProfile?.banner, meProfile?.bannerColor, meProfile?.bio, meProfile?.status, isConnected, socket, selfId]);
 
-  // Persistir mi perfil localmente
+  // Persistir mi perfil: texto en localStorage (ligero), media en IndexedDB.
+  // Así 'chatProfile' nunca contiene base64 -> sin QuotaExceededError.
   useEffect(() => {
     if (selfId && meProfile) {
-      localStorage.setItem("chatProfile", JSON.stringify({
-        userId: selfId,
-        name: meProfile.name,
-        color: meProfile.color,
-        avatar: meProfile.avatar,
-        banner: meProfile.banner,
-        bannerColor: meProfile.bannerColor,
-        bio: meProfile.bio,
-        status: meProfile.status,
-      }));
+      try {
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(slimProfile({
+          userId: selfId,
+          name: meProfile.name,
+          color: meProfile.color,
+          bannerColor: meProfile.bannerColor,
+          bio: meProfile.bio,
+          status: meProfile.status,
+        })));
+      } catch { /* cuota: el texto es minúsculo, no debería fallar */ }
+      idbSet(PROFILE_MEDIA_KEY, { avatar: meProfile.avatar || null, banner: meProfile.banner || null });
     }
   }, [selfId, meProfile]);
 
-  // Cargar identidad guardada al montar
+  // Cargar identidad guardada al montar (texto sync + media async desde IDB)
   useEffect(() => {
-    const savedProfile = localStorage.getItem("chatProfile");
-    if (!savedProfile) return;
-    try {
-      const profile = JSON.parse(savedProfile) as SessionProfilePayload;
-      if (profile.userId) {
-        setSelfId(profile.userId);
-        selfIdRef.current = profile.userId;
-        upsertParticipant({ ...profile, status: profile.status || "online" }, { allowSelf: true });
+    const profile = readSlimProfile();
+    if (profile?.userId) {
+      setSelfId(profile.userId);
+      selfIdRef.current = profile.userId;
+      upsertParticipant({ ...profile, status: profile.status || "online" } as SessionProfilePayload, { allowSelf: true });
+    }
+    idbGet<{ avatar?: string | null; banner?: string | null }>(PROFILE_MEDIA_KEY).then((media) => {
+      if (media && selfIdRef.current) {
+        upsertParticipant({ userId: selfIdRef.current, avatar: media.avatar, banner: media.banner } as SessionProfilePayload, { allowSelf: true });
       }
-    } catch { /* perfil corrupto: empezar de cero */ }
+    });
   }, [upsertParticipant]);
 
   // Medición de latencia (indicador de calidad de conexión)

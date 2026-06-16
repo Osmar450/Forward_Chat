@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Heart, ThumbsUp, Laugh, Frown, Flame, Angry, Plus } from "lucide-react";
 
@@ -18,15 +17,20 @@ interface ReactionPickerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (reaction: Reaction) => void;
-  /** Rect del mensaje que ancló el picker (para posicionarlo por encima/debajo) */
-  anchorRect: DOMRect | null;
+  /** Alinea el picker al borde de la burbuja según el autor */
+  isMine: boolean;
+  position?: "top" | "bottom";
   currentReactions?: Reaction[];
 }
 
-const PICKER_W = 330;
-const PICKER_H = 56;
-
-export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentReactions = [] }: ReactionPickerProps) {
+export function ReactionPicker({
+  isOpen,
+  onClose,
+  onSelect,
+  isMine,
+  position = "top",
+  currentReactions = [],
+}: ReactionPickerProps) {
   const handleAddEmoji = () => {
     onClose();
     const char = window.prompt("Escribe o pega un emoji:");
@@ -36,14 +40,7 @@ export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentR
     onSelect({ kind: "emoji", char: Array.from(trimmed)[0] });
   };
 
-  // Posición fija calculada desde el rect del mensaje (escapa al overflow del chat)
-  const rect = anchorRect;
-  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-  const left = Math.min(Math.max(8, cx - PICKER_W / 2), window.innerWidth - PICKER_W - 8);
-  const above = rect ? rect.top > PICKER_H + 24 : true;
-  const top = rect ? (above ? rect.top - PICKER_H - 8 : rect.bottom + 8) : window.innerHeight / 2;
-
-  return createPortal(
+  return (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -54,16 +51,16 @@ export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentR
             onTouchStart={(e) => { e.stopPropagation(); onClose(); }}
           />
 
-          {/* Capa 2: píldora flotante (fondo oscuro, borde morado) */}
+          {/* Capa 2: píldora anclada a la burbuja (borde morado, fondo oscuro).
+              Alineada al borde del autor y protegida contra desbordes (max-w-90vw). */}
           <motion.div
-            initial={{ opacity: 0, y: above ? 10 : -10, scale: 0.85 }}
+            initial={{ opacity: 0, y: position === "top" ? 10 : -10, scale: 0.85 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: above ? 10 : -10, scale: 0.85 }}
+            exit={{ opacity: 0, y: position === "top" ? 10 : -10, scale: 0.85 }}
             transition={{ type: "spring", stiffness: 400, damping: 22 }}
             onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            style={{ position: "fixed", top, left, width: PICKER_W }}
-            className="z-[9999] pointer-events-auto bg-[#13111C] border border-purple-500/60 rounded-full px-3 py-2 flex items-center justify-center gap-2 shadow-2xl backdrop-blur-md"
+            className={`absolute ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"} ${isMine ? "right-0" : "left-0"} z-[9999] pointer-events-auto max-w-[90vw] overflow-x-auto bg-[#13111C] border border-purple-500/60 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl backdrop-blur-md`}
           >
             {PREDEFINED_REACTIONS.map((r, i) => {
               const Icon = r.icon;
@@ -81,7 +78,7 @@ export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentR
                     onSelect({ kind: "icon", key: r.key });
                     onClose();
                   }}
-                  className={`p-1.5 rounded-full transition-colors ${isActive ? "bg-white/20" : "hover:bg-white/10"}`}
+                  className={`p-1.5 rounded-full transition-colors shrink-0 ${isActive ? "bg-white/20" : "hover:bg-white/10"}`}
                   title={r.label}
                   aria-label={r.label}
                 >
@@ -100,7 +97,7 @@ export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentR
                 e.stopPropagation();
                 handleAddEmoji();
               }}
-              className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-purple-300 ml-1 transition-colors"
+              className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-purple-300 ml-1 shrink-0 transition-colors"
               title="Añadir emoji"
               aria-label="Añadir emoji"
             >
@@ -109,7 +106,6 @@ export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentR
           </motion.div>
         </>
       )}
-    </AnimatePresence>,
-    document.body
+    </AnimatePresence>
   );
 }

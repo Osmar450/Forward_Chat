@@ -584,10 +584,9 @@ export default function App() {
   const handleAvatarFile = async (file: File) => {
     try {
       // GIFs animados: se guardan tal cual (pasarlos por canvas los congela).
-      // Límite 1.4MB para respetar el tope de media del servidor.
       if (file.type === "image/gif") {
-        if (file.size > 1_400_000) {
-          toast.error("El GIF es muy pesado (máx. 1.4MB). Prueba uno más ligero.");
+        if (file.size > 15 * 1024 * 1024) {
+          toast.error("El GIF es muy pesado (máx. 15MB). Prueba uno más ligero.");
           return;
         }
         const dataUrl = await new Promise<string>((resolve, reject) => {

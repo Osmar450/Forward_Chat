@@ -75,7 +75,7 @@ function MessageBubbleInner({
   // Ambos gestos conviven sin pisarse: si el dedo se mueve >10px se cancela el
   // long-press (es scroll o swipe).
   const [showPicker, setShowPicker] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [pickerPos, setPickerPos] = useState<"top" | "bottom">("top");
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const pressTimer = useRef<number | null>(null);
@@ -104,7 +104,9 @@ function MessageBubbleInner({
     if (interactiveRef.current) return;
     clearPress();
     pressTimer.current = window.setTimeout(() => {
-      setAnchorRect(bubbleRef.current?.getBoundingClientRect() || null);
+      // Si la burbuja está muy arriba, el picker se abre debajo para no recortarse
+      const rect = bubbleRef.current?.getBoundingClientRect();
+      setPickerPos(rect && rect.top < 140 ? "bottom" : "top");
       setShowPicker(true);
       try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
     }, 500);
@@ -254,12 +256,13 @@ function MessageBubbleInner({
       )}
 
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
-        {/* Reaction picker (solo se abre con long-press) */}
+        {/* Reaction picker (solo se abre con long-press), anclado a la burbuja */}
         <ReactionPicker
           isOpen={showPicker}
           onClose={() => setShowPicker(false)}
           onSelect={handleSelectReaction}
-          position="top"
+          isMine={isMine}
+          position={pickerPos}
           currentReactions={myReactions}
         />
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
