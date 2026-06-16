@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Heart, ThumbsUp, Laugh, Frown, Flame, Angry, Plus } from "lucide-react";
 
@@ -17,17 +18,15 @@ interface ReactionPickerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (reaction: Reaction) => void;
-  position?: "top" | "bottom";
+  /** Rect del mensaje que ancló el picker (para posicionarlo por encima/debajo) */
+  anchorRect: DOMRect | null;
   currentReactions?: Reaction[];
 }
 
-export function ReactionPicker({
-  isOpen,
-  onClose,
-  onSelect,
-  position = "top",
-  currentReactions = [],
-}: ReactionPickerProps) {
+const PICKER_W = 330;
+const PICKER_H = 56;
+
+export function ReactionPicker({ isOpen, onClose, onSelect, anchorRect, currentReactions = [] }: ReactionPickerProps) {
   const handleAddEmoji = () => {
     onClose();
     const char = window.prompt("Escribe o pega un emoji:");
@@ -37,7 +36,14 @@ export function ReactionPicker({
     onSelect({ kind: "emoji", char: Array.from(trimmed)[0] });
   };
 
-  return (
+  // Posición fija calculada desde el rect del mensaje (escapa al overflow del chat)
+  const rect = anchorRect;
+  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+  const left = Math.min(Math.max(8, cx - PICKER_W / 2), window.innerWidth - PICKER_W - 8);
+  const above = rect ? rect.top > PICKER_H + 24 : true;
+  const top = rect ? (above ? rect.top - PICKER_H - 8 : rect.bottom + 8) : window.innerHeight / 2;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -45,18 +51,19 @@ export function ReactionPicker({
           <div
             className="fixed inset-0 z-[9998]"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
-            onTouchStart={(e) => e.stopPropagation()}
+            onTouchStart={(e) => { e.stopPropagation(); onClose(); }}
           />
 
           {/* Capa 2: píldora flotante (fondo oscuro, borde morado) */}
           <motion.div
-            initial={{ opacity: 0, y: position === "top" ? 10 : -10, scale: 0.85 }}
+            initial={{ opacity: 0, y: above ? 10 : -10, scale: 0.85 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: position === "top" ? 10 : -10, scale: 0.85 }}
+            exit={{ opacity: 0, y: above ? 10 : -10, scale: 0.85 }}
             transition={{ type: "spring", stiffness: 400, damping: 22 }}
             onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className={`absolute ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"} left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto bg-[#13111C] border border-purple-500/60 rounded-full px-3 py-2 flex items-center gap-2 shadow-2xl backdrop-blur-md`}
+            style={{ position: "fixed", top, left, width: PICKER_W }}
+            className="z-[9999] pointer-events-auto bg-[#13111C] border border-purple-500/60 rounded-full px-3 py-2 flex items-center justify-center gap-2 shadow-2xl backdrop-blur-md"
           >
             {PREDEFINED_REACTIONS.map((r, i) => {
               const Icon = r.icon;
@@ -102,6 +109,7 @@ export function ReactionPicker({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

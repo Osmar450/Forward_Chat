@@ -71,23 +71,69 @@ function MessageBubbleInner({
   onSaveSticker: (url: string) => void;
   formatText: (text?: string) => React.ReactNode;
 }) {
-  // Long-press (500ms) abre SOLO el ReactionPicker. El scroll/movimiento cancela.
+  // Long-press (500ms) abre SOLO el ReactionPicker; el swipe horizontal responde.
+  // Ambos gestos conviven sin pisarse: si el dedo se mueve >10px se cancela el
+  // long-press (es scroll o swipe).
   const [showPicker, setShowPicker] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swiping, setSwiping] = useState(false);
   const pressTimer = useRef<number | null>(null);
+  const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const movedRef = useRef(false);
+  const interactiveRef = useRef(false);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const SWIPE_TRIGGER = 44;
+  const SWIPE_MAX = 96;
+  const SWIPE_SOFT = 64;
 
-  const startPress = () => {
-    if (msg.deleted) return;
-    clearPress();
-    pressTimer.current = window.setTimeout(() => {
-      setShowPicker(true);
-      try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
-    }, 500);
-  };
   const clearPress = () => {
     if (pressTimer.current) {
       clearTimeout(pressTimer.current);
       pressTimer.current = null;
     }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (msg.deleted) return;
+    interactiveRef.current = !!(e.target as HTMLElement).closest("button, a, [role='slider']");
+    movedRef.current = false;
+    startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
+    if (interactiveRef.current) return;
+    clearPress();
+    pressTimer.current = window.setTimeout(() => {
+      setAnchorRect(bubbleRef.current?.getBoundingClientRect() || null);
+      setShowPicker(true);
+      try { navigator.vibrate?.(40); } catch { /* sin vibración */ }
+    }, 500);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (interactiveRef.current) return;
+    const dx = e.clientX - startXRef.current;
+    const dy = e.clientY - startYRef.current;
+    // Movimiento >10px: el usuario hace scroll o swipe -> cancelar long-press
+    if (Math.hypot(dx, dy) > 10) {
+      clearPress();
+      movedRef.current = true;
+    }
+    // Swipe-to-reply: solo si el gesto es predominantemente horizontal
+    if (Math.abs(dx) > Math.abs(dy)) {
+      const directional = isMine ? Math.min(0, dx) : Math.max(0, dx);
+      const mag = Math.abs(directional);
+      const eased = mag <= SWIPE_SOFT ? mag : SWIPE_SOFT + (mag - SWIPE_SOFT) * 0.35;
+      if (mag > 4 && !swiping) setSwiping(true);
+      setSwipeOffset(Math.sign(directional) * Math.min(SWIPE_MAX, eased));
+    }
+  };
+
+  const endGesture = () => {
+    clearPress();
+    if (!msg.deleted && Math.abs(swipeOffset) >= SWIPE_TRIGGER) onReply(msg);
+    setSwiping(false);
+    setSwipeOffset(0);
   };
 
   // Una reacción por usuario: el servidor hace toggle/replace; aquí solo se
@@ -219,13 +265,15 @@ function MessageBubbleInner({
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
           {actionButtons}
 
-          <div
-            onTouchStart={startPress}
-            onTouchEnd={clearPress}
-            onTouchMove={clearPress}
-            onMouseDown={startPress}
-            onMouseUp={clearPress}
-            onMouseLeave={clearPress}
+          <motion.div
+            ref={bubbleRef}
+            animate={{ x: swipeOffset }}
+            transition={swiping ? { type: "spring", stiffness: 900, damping: 50, mass: 0.4 } : { type: "spring", stiffness: 550, damping: 32 }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endGesture}
+            onPointerCancel={endGesture}
+            onPointerLeave={endGesture}
             onContextMenu={(e) => e.preventDefault()}
             style={{
               ...(!msg.deleted && !isMine && !msg.isBot && msg.kind !== "sticker"
@@ -384,7 +432,7 @@ function MessageBubbleInner({
                 )}
               </>
             )}
-          </div>
+          </motion.div>
         </div>
 
         {/* Reacciones existentes (solo lectura) */}
