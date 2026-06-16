@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Plus, Reply, Smile, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
+import { Ban, Check, CheckCheck, Clock3, Copy as CopyIcon, Pencil, Plus, Reply, Sparkles, Star, Sticker, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ThemeTokens } from "../../lib/themes";
 import { getThemeBgColor } from "../../lib/themes";
@@ -268,39 +268,18 @@ function MessageBubbleInner({
           </motion.span>
         )}
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
-          {/* Acciones por defecto (visibles sin mantener pulsado): React, Responder, Editar */}
+          {/* Única acción por defecto: Responder. El resto (reaccionar, editar,
+              borrar) vive en el menú unificado que abre el long-press. */}
           {!msg.deleted && (
-            <span className="flex items-center gap-0.5 self-center">
-              <motion.button
-                whileTap={{ scale: 0.85 }}
-                transition={{ type: "spring", stiffness: 400, damping: 18 }}
-                onClick={() => onTogglePicker(msg.id)}
-                className={`p-1.5 rounded-full ${t.iconBtn}`}
-                aria-label="Reaccionar"
-              >
-                <Smile className="size-4" />
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.85 }}
-                transition={{ type: "spring", stiffness: 400, damping: 18 }}
-                onClick={() => onReply(msg)}
-                className={`p-1.5 rounded-full ${t.iconBtn} ${t.accentText}`}
-                aria-label="Responder"
-              >
-                <Reply className="size-4" />
-              </motion.button>
-              {canEdit && (
-                <motion.button
-                  whileTap={{ scale: 0.85 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 18 }}
-                  onClick={() => onEdit(msg)}
-                  className={`p-1.5 rounded-full ${t.iconBtn} ${t.textMuted}`}
-                  aria-label="Editar mensaje"
-                >
-                  <Pencil className="size-4" />
-                </motion.button>
-              )}
-            </span>
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 400, damping: 18 }}
+              onClick={() => onReply(msg)}
+              className={`p-1.5 rounded-full self-center ${t.iconBtn} ${t.accentText}`}
+              aria-label="Responder"
+            >
+              <Reply className="size-4" />
+            </motion.button>
           )}
 
           <motion.div
@@ -536,7 +515,8 @@ function MessageBubbleInner({
                 transition={{ type: "spring", stiffness: 400, damping: 22 }}
                 style={{ backgroundColor: getThemeBgColor(t) }}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-50 pointer-events-auto max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
+                onTouchStart={(e) => e.stopPropagation()}
+                className={`absolute ${pickerBelow ? "top-full mt-2" : "bottom-full mb-2"} ${isMine ? "right-0" : "left-0"} z-[9999] pointer-events-auto max-w-[92vw] border-2 ${t.borderStrong} ${pickerExpanded ? "rounded-2xl" : "rounded-full"} shadow-2xl`}
               >
                 {/* Barra horizontal tipo píldora: 6 iconos + botón "+" */}
                 <div className="flex items-center gap-0.5 px-1.5 py-1">
@@ -552,6 +532,7 @@ function MessageBubbleInner({
                         transition={{ delay: i * 0.03, type: "spring", stiffness: 400, damping: 18 }}
                         whileHover={{ scale: 1.25, y: -2 }}
                         whileTap={{ scale: 0.85 }}
+                        onTouchStart={(e) => e.stopPropagation()}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) { onReact(msg.id, rid); onClosePicker(); } }}
                         className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${active ? t.accentSoft : "hover:bg-white/10"}`}
                         aria-label={r.label}
@@ -563,6 +544,7 @@ function MessageBubbleInner({
                   <motion.button
                     whileHover={{ scale: 1.15 }}
                     whileTap={{ scale: 0.85 }}
+                    onTouchStart={(e) => e.stopPropagation()}
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!ghostClick()) setPickerExpanded((v) => !v); }}
                     className={`size-9 max-md:size-10 flex items-center justify-center rounded-full ${pickerExpanded ? t.accentSoft : t.iconBtn}`}
                     aria-label="Más reacciones y acciones"

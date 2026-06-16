@@ -20,6 +20,7 @@ function emitToUser(userId, event, payload) {
 }
 
 function broadcastPresence() {
+    pruneDeadSockets();
     const online = [];
     for (const userId of userSockets.keys()) {
         const user = store.users[userId];
@@ -27,6 +28,20 @@ function broadcastPresence() {
     }
     online.push({ ...BOT_PROFILE });
     io.emit('users online', online);
+}
+
+// Elimina sockets fantasma: ids que ya no están en io.sockets (desconexiones
+// abruptas que no dispararon 'disconnect'). Mantiene la lista de presencia limpia.
+function pruneDeadSockets() {
+    if (!io) return;
+    const live = io.sockets?.sockets;
+    if (!live) return;
+    for (const [userId, ids] of userSockets) {
+        for (const sid of [...ids]) {
+            if (!live.has(sid)) ids.delete(sid);
+        }
+        if (ids.size === 0) userSockets.delete(userId);
+    }
 }
 
 function sendFriendsList(userId) {
