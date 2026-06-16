@@ -101,8 +101,10 @@ function MessageBubbleInner({
     longPressedRef.current = false;
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
-      onTogglePicker(msg.id);
-    }, 400);
+      // Long-press: abre el menú YA expandido (reacciones + acciones)
+      setPickerExpanded(true);
+      if (!pickerOpen) onTogglePicker(msg.id);
+    }, 380);
   };
   const cancelLongPress = () => {
     if (longPressTimer.current) {
@@ -128,14 +130,16 @@ function MessageBubbleInner({
     if (!msg.deleted && !longPressedRef.current) {
       longPressedRef.current = true;
       cancelLongPress();
-      onTogglePicker(msg.id);
+      setPickerExpanded(true);
+      if (!pickerOpen) onTogglePicker(msg.id);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (swipeStartXRef.current === null) return;
     const raw = e.clientX - swipeStartXRef.current;
-    if (Math.abs(raw) > 5) {
+    // Tolerancia amplia: el jitter del dedo ya no cancela el long-press
+    if (Math.abs(raw) > 12) {
       cancelLongPress();
       movedRef.current = true;
       if (!swiping) setSwiping(true);
@@ -156,7 +160,12 @@ function MessageBubbleInner({
 
   const handlePointerUp = () => {
     cancelLongPress();
+    // Tap simple (sin arrastre ni long-press): abre el menú de acciones.
+    // Es la vía más fiable en cualquier dispositivo, además del long-press.
+    const wasTap =
+      !longPressedRef.current && !movedRef.current && !interactiveTargetRef.current && Math.abs(swipeOffset) < 6;
     finishSwipe();
+    if (wasTap && !msg.deleted && !pickerOpen) onTogglePicker(msg.id);
   };
 
   const handlePointerLeave = () => {
