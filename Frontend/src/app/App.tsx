@@ -21,6 +21,7 @@ import {
   BANNER_GRADIENT_KEY,
   BANNER_GRADIENT_CSS,
 } from "./lib/chat";
+import { idbGet, idbSet } from "./lib/idbStore";
 import { useChatSocket } from "./hooks/useChatSocket";
 import { useWebRTC } from "./hooks/useWebRTC";
 import { useAudioRecorder } from "./hooks/useAudioRecorder";
@@ -251,13 +252,14 @@ export default function App() {
   useEffect(() => { localStorage.setItem("chatBlocked", JSON.stringify(blocked)); }, [blocked]);
 
   // Ajustes de usuario (preparado para togglear más opciones a futuro)
-  const [appSettings] = useState<{ warnOnDelete: boolean }>(() => {
+  const [appSettings, setAppSettings] = useState<{ warnOnDelete: boolean }>(() => {
     try {
       return { warnOnDelete: true, ...JSON.parse(localStorage.getItem("chatSettings") || "{}") };
     } catch {
       return { warnOnDelete: true };
     }
   });
+  useEffect(() => { localStorage.setItem("chatSettings", JSON.stringify(appSettings)); }, [appSettings]);
 
   // Apodos: el nombre mostrado en burbujas y lista de DMs usa el apodo si existe
   const displayParticipants = useMemo(() => {
@@ -407,13 +409,21 @@ export default function App() {
       }
     };
 
+    // Apodos persistidos en el servidor: se fusionan con los locales al entrar
+    const onNicknamesSync = (data: { map?: Record<string, string> }) => {
+      if (!data?.map) return;
+      setNicknames((prev) => ({ ...data.map, ...prev }));
+    };
+
     socket.on("dm message", onDm);
     socket.on("chat message", onLobby);
     socket.on("nickname assigned", onNickname);
+    socket.on("nicknames sync", onNicknamesSync);
     return () => {
       socket.off("dm message", onDm);
       socket.off("chat message", onLobby);
       socket.off("nickname assigned", onNickname);
+      socket.off("nicknames sync", onNicknamesSync);
     };
   }, [socket, selfId]);
 
@@ -456,23 +466,37 @@ export default function App() {
   );
 
   // ==========================================
-  // PERSISTENCIA DE STICKERS
+  // PERSISTENCIA DE STICKERS (IndexedDB)
+  // Los GIF animados como dataURL revientan localStorage (QuotaExceededError),
+  // por eso se guardan en IndexedDB. Migra una sola vez lo que hubiera en
+  // localStorage y luego limpia esas claves pesadas.
   // ==========================================
+  const stickersHydratedRef = useRef(false);
   useEffect(() => {
-    try {
-      const savedStickers = localStorage.getItem("chatStickers");
-      const savedFavs = localStorage.getItem("chatFavoriteStickers");
-      if (savedStickers) setStickers(JSON.parse(savedStickers));
-      if (savedFavs) setFavoriteStickers(JSON.parse(savedFavs));
-    } catch { /* datos corruptos: ignorar */ }
+    (async () => {
+      let stk = await idbGet<string[]>("chatStickers");
+      let favs = await idbGet<string[]>("chatFavoriteStickers");
+      try {
+        const lsStk = localStorage.getItem("chatStickers");
+        const lsFav = localStorage.getItem("chatFavoriteStickers");
+        if (stk === undefined && lsStk) { stk = JSON.parse(lsStk); await idbSet("chatStickers", stk); }
+        if (favs === undefined && lsFav) { favs = JSON.parse(lsFav); await idbSet("chatFavoriteStickers", favs); }
+        // Liberar el espacio pesado de localStorage tras migrar
+        localStorage.removeItem("chatStickers");
+        localStorage.removeItem("chatFavoriteStickers");
+      } catch { /* ignorar */ }
+      if (Array.isArray(stk)) setStickers(stk);
+      if (Array.isArray(favs)) setFavoriteStickers(favs);
+      stickersHydratedRef.current = true;
+    })();
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("chatStickers", JSON.stringify(stickers));
+    if (stickersHydratedRef.current) idbSet("chatStickers", stickers);
   }, [stickers]);
 
   useEffect(() => {
-    localStorage.setItem("chatFavoriteStickers", JSON.stringify(favoriteStickers));
+    if (stickersHydratedRef.current) idbSet("chatFavoriteStickers", favoriteStickers);
   }, [favoriteStickers]);
 
   // ==========================================
@@ -1318,6 +1342,12 @@ export default function App() {
           theme={t}
           perms={perms}
           ecoMode={ecoMode}
+          warnOnDelete={appSettings.warnOnDelete}
+          onToggleWarnOnDelete={() => setAppSettings((s) => {
+            const next = { ...s, warnOnDelete: !s.warnOnDelete };
+            toast.info(next.warnOnDelete ? "Se pedirá confirmación al borrar mensajes" : "Borrado sin confirmación");
+            return next;
+          })}
           onToggleMic={() => setPerms((p) => {
             const next = { ...p, mic: !p.mic };
             toast.info(next.mic ? "Micrófono habilitado para llamadas" : "Micrófono deshabilitado: no podrás llamar ni contestar.");

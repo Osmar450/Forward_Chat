@@ -14,7 +14,8 @@ const store = {
     friendships: [],  // [ [userIdA, userIdB], ... ]
     lobby: [],        // mensajes del lobby público
     dms: {},          // dmKey -> mensajes privados
-    reads: {}         // dmKey -> { userId: timestamp de última lectura }
+    reads: {},        // dmKey -> { userId: timestamp de última lectura }
+    nicknames: {}     // ownerId -> { targetId: apodo } (alias privados, persistentes)
 };
 
 function loadStore() {
@@ -26,7 +27,8 @@ function loadStore() {
                 friendships: raw.friendships || [],
                 lobby: raw.lobby || [],
                 dms: raw.dms || {},
-                reads: raw.reads || {}
+                reads: raw.reads || {},
+                nicknames: raw.nicknames || {}
             });
             console.log(`💾 Datos cargados: ${Object.keys(store.users).length} usuarios, ${store.lobby.length} mensajes de lobby`);
         }

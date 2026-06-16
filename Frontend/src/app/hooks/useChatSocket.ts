@@ -150,15 +150,23 @@ export function useChatSocket(options: {
     if (id === selfIdRef.current && !opts.allowSelf) return;
     setParticipants((prev) => {
       const existing = prev[id];
+      // Anti-wipe: ante datos vacíos/nulos por una conexión inestable, se
+      // conserva el valor previo (nombre, avatar, banner) en vez de borrarlo.
+      const keep = <T,>(incoming: T | null | undefined, current: T | undefined, fallback: T): T =>
+        incoming !== undefined && incoming !== null && incoming !== ("" as unknown as T)
+          ? incoming
+          : current !== undefined && current !== null
+            ? current
+            : fallback;
       const next: Participant = {
         id,
-        name: data.name ?? existing?.name ?? id,
-        color: data.color ?? existing?.color ?? (id === BOT_ID ? "#8B5CF6" : colorForUser(id)),
+        name: keep(data.name, existing?.name, id),
+        color: keep(data.color, existing?.color, id === BOT_ID ? "#8B5CF6" : colorForUser(id)),
         // El bot SIEMPRE usa el PNG empaquetado (el SVG remoto falla en Android).
         // Si ese usuario me bloqueó, su avatar se oculta (privacidad).
-        avatar: id === BOT_ID ? BOT_AVATAR : blockedByRef.current.has(id) ? null : data.avatar !== undefined ? data.avatar : existing?.avatar ?? null,
-        banner: data.banner !== undefined ? data.banner : existing?.banner ?? null,
-        bannerColor: data.bannerColor !== undefined ? data.bannerColor : existing?.bannerColor ?? null,
+        avatar: id === BOT_ID ? BOT_AVATAR : blockedByRef.current.has(id) ? null : keep(data.avatar, existing?.avatar, null),
+        banner: keep(data.banner, existing?.banner, null),
+        bannerColor: keep(data.bannerColor, existing?.bannerColor, null),
         bio: data.bio !== undefined ? data.bio : existing?.bio ?? "",
         status: (data.status as Status) ?? existing?.status ?? "online",
         isBot: data.isBot ?? existing?.isBot ?? id === BOT_ID,

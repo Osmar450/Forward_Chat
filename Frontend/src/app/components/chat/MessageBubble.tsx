@@ -87,10 +87,6 @@ function MessageBubbleInner({
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [pickerExpanded, setPickerExpanded] = useState(false);
-  // Menú móvil compacto (solo 2 acciones) que aparece tras un long-press
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const mobileMenuOpenedAtRef = useRef(0);
-  const mobileMenuRef = useRef<HTMLSpanElement>(null);
   // Físicas de swipe: umbral bajo y sensible + resistencia progresiva
   const SWIPE_TRIGGER = 44;
   const SWIPE_MAX = 96;
@@ -105,9 +101,7 @@ function MessageBubbleInner({
     longPressedRef.current = false;
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
-      // Long-press: menú móvil con solo 2 acciones (Eliminar + Reaccionar)
-      mobileMenuOpenedAtRef.current = Date.now();
-      setMobileMenu(true);
+      onTogglePicker(msg.id);
     }, 400);
   };
   const cancelLongPress = () => {
@@ -134,8 +128,7 @@ function MessageBubbleInner({
     if (!msg.deleted && !longPressedRef.current) {
       longPressedRef.current = true;
       cancelLongPress();
-      mobileMenuOpenedAtRef.current = Date.now();
-      setMobileMenu(true);
+      onTogglePicker(msg.id);
     }
   };
 
@@ -200,16 +193,6 @@ function MessageBubbleInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerOpen]);
 
-  // Cierre del menú móvil de 2 acciones al tocar fuera
-  useEffect(() => {
-    if (!mobileMenu) return;
-    const onDocPointer = (e: PointerEvent) => {
-      if (Date.now() - mobileMenuOpenedAtRef.current < 300) return;
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) setMobileMenu(false);
-    };
-    document.addEventListener("pointerdown", onDocPointer, true);
-    return () => document.removeEventListener("pointerdown", onDocPointer, true);
-  }, [mobileMenu]);
 
   /**
    * Cuerpo del mensaje con coincidencias de búsqueda resaltadas.
@@ -271,64 +254,6 @@ function MessageBubbleInner({
         </motion.button>
       )}
 
-      {/* Desktop: acciones al pasar el cursor (ocultas en móvil) */}
-      {isMine && !msg.deleted && (canEdit || canDelete) && (
-        <span className="hidden md:flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity">
-          {canEdit && (
-            <motion.button
-              whileHover={{ scale: 1.15 }}
-              whileTap={{ scale: 0.85 }}
-              transition={{ type: "spring", stiffness: 400, damping: 18 }}
-              onClick={() => onEdit(msg)}
-              className={`p-2 rounded-full ${t.iconBtn} ${t.textMuted}`}
-              aria-label="Editar mensaje"
-            >
-              <Pencil className="size-4" />
-            </motion.button>
-          )}
-          {canDelete && (
-            <motion.button
-              whileHover={{ scale: 1.15, rotate: -10 }}
-              whileTap={{ scale: 0.85, rotate: 15 }}
-              transition={{ type: "spring", stiffness: 400, damping: 18 }}
-              onClick={() => onDelete(msg.id)}
-              className={`p-2 rounded-full ${t.iconBtn} text-red-400`}
-              aria-label="Eliminar mensaje"
-            >
-              <Trash2 className="size-4" />
-            </motion.button>
-          )}
-        </span>
-      )}
-
-      {/* Móvil: long-press muestra solo 2 acciones (Eliminar + Reaccionar) */}
-      {mobileMenu && !msg.deleted && (
-        <span ref={mobileMenuRef} className="flex md:hidden items-center gap-1 self-center">
-          {canDelete && (
-            <motion.button
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              whileTap={{ scale: 0.85 }}
-              onClick={() => { setMobileMenu(false); onDelete(msg.id); }}
-              className={`p-2.5 rounded-full ${t.iconBtn} text-red-400 shadow-lg`}
-              aria-label="Eliminar mensaje"
-            >
-              <Trash2 className="size-4" />
-            </motion.button>
-          )}
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            whileTap={{ scale: 0.85 }}
-            onClick={() => { setMobileMenu(false); onTogglePicker(msg.id); }}
-            className={`p-2.5 rounded-full ${t.iconBtn} ${t.accentText} shadow-lg`}
-            aria-label="Reaccionar"
-          >
-            <Smile className="size-4" />
-          </motion.button>
-        </span>
-      )}
-
       <div className={`relative flex flex-col min-w-0 max-w-[88%] md:max-w-[82%] ${isMine ? "items-end" : "items-start"}`}>
         {!msg.deleted && (
           <motion.span
@@ -343,11 +268,11 @@ function MessageBubbleInner({
           </motion.span>
         )}
         <div className={`flex items-end gap-1.5 ${isMine ? "flex-row" : "flex-row-reverse"}`}>
+          {/* Acciones por defecto (visibles sin mantener pulsado): React, Responder, Editar */}
           {!msg.deleted && (
-            <span className="hidden md:flex items-center gap-0.5 self-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="flex items-center gap-0.5 self-center">
               <motion.button
-                whileHover={{ scale: 1.2, rotate: -8 }}
-                whileTap={{ scale: 0.85, rotate: 12 }}
+                whileTap={{ scale: 0.85 }}
                 transition={{ type: "spring", stiffness: 400, damping: 18 }}
                 onClick={() => onTogglePicker(msg.id)}
                 className={`p-1.5 rounded-full ${t.iconBtn}`}
@@ -355,9 +280,7 @@ function MessageBubbleInner({
               >
                 <Smile className="size-4" />
               </motion.button>
-              {/* Botón dedicado de Responder (restaurado) */}
               <motion.button
-                whileHover={{ scale: 1.2, rotate: 8 }}
                 whileTap={{ scale: 0.85 }}
                 transition={{ type: "spring", stiffness: 400, damping: 18 }}
                 onClick={() => onReply(msg)}
@@ -366,6 +289,17 @@ function MessageBubbleInner({
               >
                 <Reply className="size-4" />
               </motion.button>
+              {canEdit && (
+                <motion.button
+                  whileTap={{ scale: 0.85 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                  onClick={() => onEdit(msg)}
+                  className={`p-1.5 rounded-full ${t.iconBtn} ${t.textMuted}`}
+                  aria-label="Editar mensaje"
+                >
+                  <Pencil className="size-4" />
+                </motion.button>
+              )}
             </span>
           )}
 

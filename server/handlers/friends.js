@@ -1,4 +1,4 @@
-const { store } = require('../store');
+const { store, scheduleSave } = require('../store');
 const { getOrCreateUser, publicProfile, normalizeCode, areFriends, addFriendship, removeFriendship, findUserByCode, cleanText } = require('../users');
 const { isOnline } = require('../presence');
 const { emitToUser, sendFriendsList } = require('../realtime');
@@ -49,19 +49,25 @@ function register(io, socket) {
         }
     });
 
-    // Apodo: el cliente A guarda el apodo localmente y notifica a B en tiempo real
+    // Apodo: se PERSISTE en el servidor (sobrevive a reinicios), se sincroniza
+    // al dueño en cada sesión y se notifica al destinatario en tiempo real.
     socket.on('set nickname', (payload) => {
         if (!socket.userId || !payload?.to) return;
         const target = payload.to;
         if (target === socket.userId || !store.users[target]) return;
         const nickname = cleanText(payload.nickname, 24);
-        if (!nickname) return;
+        if (!store.nicknames[socket.userId]) store.nicknames[socket.userId] = {};
+        if (nickname) store.nicknames[socket.userId][target] = nickname;
+        else delete store.nicknames[socket.userId][target];
+        scheduleSave();
         const me = getOrCreateUser(socket.userId);
-        emitToUser(target, 'nickname assigned', {
-            from: socket.userId,
-            fromName: me.name,
-            nickname,
-        });
+        if (nickname) {
+            emitToUser(target, 'nickname assigned', {
+                from: socket.userId,
+                fromName: me.name,
+                nickname,
+            });
+        }
     });
 }
 

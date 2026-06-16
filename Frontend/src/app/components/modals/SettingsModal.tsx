@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, Leaf, Mic, Rocket, Settings, Trash2, Video } from "lucide-react";
+import { Bell, Leaf, Mic, Rocket, Settings, ShieldAlert, Trash2, Video } from "lucide-react";
 import type { ThemeTokens } from "../../lib/themes";
 import { CloseButton } from "../common/CloseButton";
 
@@ -37,6 +37,8 @@ export function SettingsModal({
   theme: t,
   perms,
   ecoMode,
+  warnOnDelete,
+  onToggleWarnOnDelete,
   onToggleMic,
   onToggleCam,
   onToggleNotif,
@@ -48,6 +50,8 @@ export function SettingsModal({
   theme: ThemeTokens;
   perms: { mic: boolean; cam: boolean; notif: boolean };
   ecoMode: boolean;
+  warnOnDelete: boolean;
+  onToggleWarnOnDelete: () => void;
   onToggleMic: () => void;
   onToggleCam: () => void;
   onToggleNotif: () => void;
@@ -96,6 +100,7 @@ export function SettingsModal({
 
             <div className={`text-[10px] font-pixel-ui tracking-widest ${t.textMuted} mt-5 mb-2`}>GENERAL</div>
             <div className="space-y-2">
+              <Toggle theme={t} icon={<ShieldAlert className="size-5" />} label="Confirmar antes de borrar" hint="Evita borrar mensajes por accidente" enabled={warnOnDelete} onToggle={onToggleWarnOnDelete} />
               <Toggle theme={t} icon={<Leaf className={`size-5 ${ecoMode ? "text-emerald-400" : ""}`} />} label="Modo Eco" hint="Menos animaciones, ahorra batería" enabled={ecoMode} onToggle={onToggleEco} />
               <button
                 onClick={onClearChat}

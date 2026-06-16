@@ -33,6 +33,8 @@ function register(io, socket) {
         sendFriendsList(user.userId);
         // Quiénes me bloquearon (mi cliente oculta sus avatares/banners)
         socket.emit('blocked by', { ids: blockersOf(user.userId) });
+        // Apodos que este usuario asignó (persistentes en el servidor)
+        socket.emit('nicknames sync', { map: store.nicknames[user.userId] || {} });
         broadcastPresence();
     };
 
