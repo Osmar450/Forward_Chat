@@ -178,4 +178,62 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  /* ===== Accesibilidad y pulido global ===== */
+
+  /* Foco visible solo con teclado: anillo consistente en toda la app */
+  :where(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid #7c5cff;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Sin flash azul al tocar en móvil; sin zoom accidental del layout */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* El scroll del chat no arrastra la página (pull-to-refresh accidental) */
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* Scrollbars finas y discretas en las listas */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 92, 255, 0.35) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(124, 92, 255, 0.35);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Virtualización nativa: el navegador no renderiza filas de chat fuera
+     de pantalla (junto con la ventana de mensajes mantiene el scroll fluido
+     con miles de mensajes) */
+  .cv-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
+  /* Respeto del sistema: menos movimiento para quien lo pide */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

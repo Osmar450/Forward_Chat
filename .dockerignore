@@ -1,0 +1,16 @@
+node_modules
+Frontend/node_modules
+Frontend/dist
+.git
+.github
+data
+uploads/*
+*.md
+tests
+.env
+.env.*
+Frontend/.env
+Frontend/.env.*
+docker-compose.yml
+Dockerfile
+Frontend/Dockerfile

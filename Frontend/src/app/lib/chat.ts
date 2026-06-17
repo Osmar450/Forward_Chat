@@ -1,9 +1,18 @@
-import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry } from "lucide-react";
+import { Circle, CircleOff, MinusCircle, Moon, Heart, ThumbsUp, Laugh, Frown, Flame, Angry, Skull, PartyPopper } from "lucide-react";
 import type React from "react";
+// Avatar del bot empaquetado en el bundle (el SVG remoto no renderiza en Android)
+import botAvatarUrl from "../../assets/Forward_Bot.png";
+
+export const BOT_ID = "forwardbot";
+export const BOT_AVATAR: string = botAvatarUrl;
+export const LOBBY = "lobby";
+
+/** Clave de conversación DM en el servidor: ids ordenados unidos por "|". */
+export const dmScopeOf = (a: string, b: string) => [a, b].sort().join("|");
 
 export type Status = "online" | "idle" | "dnd" | "invisible" | "offline";
 
-export type ReactionKey = "heart" | "thumb" | "laugh" | "sad" | "fire" | "angry";
+export type ReactionKey = "heart" | "thumb" | "laugh" | "sad" | "fire" | "angry" | "skull" | "party";
 
 export type Participant = {
   id: string;
@@ -27,11 +36,24 @@ export type ReplyTo = {
   text?: string;
 };
 
-// Las reacciones llegan del servidor como { "e:😀": [userId, ...], "i:heart": [...] }
+// Las reacciones llegan del servidor como { "i:heart": [userId, ...] }
 export type ReactionMap = Record<string, string[]>;
+
+/** Metadatos OpenGraph que el servidor adjunta a mensajes con URL. */
+export type LinkPreview = {
+  url: string;
+  title: string;
+  description?: string | null;
+  image?: string | null;
+  siteName?: string | null;
+};
 
 export type Message = {
   id: string | number;
+  /** id local optimista; el eco del servidor lo trae para reconciliar */
+  clientId?: string | number;
+  /** true mientras espera confirmación del servidor (Optimistic UI) */
+  pending?: boolean;
   authorId: string;
   kind: MessageKind;
   text?: string;
@@ -42,9 +64,19 @@ export type Message = {
   time: string;
   timestamp: number;
   deleted?: boolean;
+  /** El autor editó el texto después de enviarlo */
+  edited?: boolean;
+  /** Respuesta del bot llegando en vivo (fragmentos por socket) */
+  streaming?: boolean;
+  /** Aviso de sistema local (apodos, etc.); se renderiza centrado */
+  system?: boolean;
   reactions?: ReactionMap;
+  linkPreview?: LinkPreview;
   isBot?: boolean;
 };
+
+/** Estado de entrega de un mensaje propio en un DM. */
+export type Receipt = "pending" | "sent" | "read";
 
 export const USER_COLORS = [
   "#7c5cff", "#ec4899", "#22d3ee", "#f59e0b", "#10b981",
@@ -54,9 +86,37 @@ export const USER_COLORS = [
 export const BANNER_COLORS = [
   "#7c5cff", "#ec4899", "#22d3ee", "#f59e0b", "#10b981",
   "#ef4444", "#3b82f6", "#1e293b", "#831843", "#14532d",
+  // Paleta extendida (armónica con los temas de la app)
+  "#a855f7", "#f97316", "#84cc16", "#06b6d4", "#e11d48",
+  "#0f766e", "#7c2d12", "#4c1d95", "#b45309",
 ];
 
-export const QUICK_EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "🙏", "😡"];
+/** Valor especial de bannerColor: degradado multicolor (siempre al final). */
+export const BANNER_GRADIENT_KEY = "__gradient__";
+export const BANNER_GRADIENT_CSS =
+  "linear-gradient(135deg, #7c5cff 0%, #ec4899 30%, #f59e0b 55%, #10b981 80%, #22d3ee 100%)";
+
+// ==========================================
+// FUENTES DE LAS BURBUJAS (configurables en el menú "Fuentes")
+// Pilas con respaldo de sistema: funcionan offline en el APK.
+// ==========================================
+export type ChatFontKey = "moderna" | "android" | "droid" | "comic" | "cyber" | "retro" | "arcade" | "terminal";
+
+export const CHAT_FONTS: { key: ChatFontKey; label: string; family: string; hint: string }[] = [
+  { key: "moderna", label: "Moderna", family: "'Inter', 'Segoe UI', Roboto, system-ui, sans-serif", hint: "Limpia y actual (Inter)" },
+  { key: "android", label: "Android Clásica", family: "Roboto, 'Noto Sans', 'Segoe UI', system-ui, sans-serif", hint: "La de siempre (Roboto)" },
+  { key: "droid", label: "Droid 2016", family: "'Droid Sans', 'Roboto Condensed', Roboto, sans-serif", hint: "Nostalgia Android" },
+  { key: "comic", label: "Cómic", family: "var(--font-comic)", hint: "Divertida y redonda" },
+  { key: "cyber", label: "Cyber Pixel", family: "var(--font-pixel)", hint: "Terminal retro (VT323)" },
+  { key: "retro", label: "Retro Game", family: "var(--font-pixel-display)", hint: "Arcade 8-bit" },
+  { key: "arcade", label: "Arcade", family: "var(--font-pixel-ui)", hint: "Pixel legible (Silkscreen)" },
+  { key: "terminal", label: "Terminal", family: "'Cascadia Code', 'JetBrains Mono', ui-monospace, Consolas, monospace", hint: "Monoespaciada de código" },
+];
+
+export const DEFAULT_CHAT_FONT: ChatFontKey = "moderna";
+
+export const chatFontFamily = (key: string): string =>
+  (CHAT_FONTS.find((f) => f.key === key) || CHAT_FONTS[0]).family;
 
 export const AUDIO_MIME_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
 
@@ -75,15 +135,24 @@ export const REACTIONS: { key: ReactionKey; icon: React.ComponentType<{ classNam
   { key: "sad", icon: Frown, color: "text-cyan-400", label: "Triste" },
   { key: "fire", icon: Flame, color: "text-orange-500", label: "Genial" },
   { key: "angry", icon: Angry, color: "text-red-600", label: "Enojado" },
+  { key: "skull", icon: Skull, color: "text-slate-300", label: "Calavera" },
+  { key: "party", icon: PartyPopper, color: "text-pink-400", label: "Fiesta" },
 ];
 
 export const messagePreview = (kind: MessageKind, text?: string) => {
   const trimmed = text?.trim();
-  if (kind === "image") return trimmed || "📷 Foto";
-  if (kind === "audio") return "🎤 Audio";
-  if (kind === "sticker") return "🖼️ Sticker";
+  if (kind === "image") return trimmed || "Foto";
+  if (kind === "audio") return "Audio";
+  if (kind === "sticker") return "Sticker";
   return trimmed || "Mensaje";
 };
+
+/** Escapa metacaracteres para usar texto literal dentro de una RegExp. */
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Detecta si una URL/dataURL corresponde a un GIF (para animarlo / guardarlo). */
+export const isGif = (url?: string | null) =>
+  !!url && (/\.gif($|\?)/i.test(url) || url.startsWith("data:image/gif"));
 
 export const colorForUser = (id: string) => {
   let hash = 0;
@@ -102,17 +171,70 @@ export const fmtTime = (sec: number) => {
 export const fmtClock = (ts?: number | string) =>
   (ts ? new Date(ts) : new Date()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
+// ==========================================
+// FECHAS INTELIGENTES (separadores y lista de chats)
+// ==========================================
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Mensajes consecutivos del mismo autor dentro de esta ventana se agrupan. */
+export const GROUP_GAP_MS = 5 * 60 * 1000;
+
+/** Ventana para editar/borrar mensajes propios (espejo del servidor). */
+export const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+export const startOfDay = (ts: number) => {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+export const isSameDay = (a: number, b: number) => startOfDay(a) === startOfDay(b);
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Etiqueta de separador de día: "Hoy", "Ayer", "Lunes", "12 mar 2025". */
+export const fmtDayLabel = (ts: number) => {
+  const today = startOfDay(Date.now());
+  const day = startOfDay(ts);
+  if (day === today) return "Hoy";
+  if (day === today - DAY_MS) return "Ayer";
+  const d = new Date(ts);
+  if (today - day < 7 * DAY_MS) return capitalize(d.toLocaleDateString("es", { weekday: "long" }));
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString("es", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+};
+
+/** Hora compacta para la lista de chats: "3:24 pm", "Ayer", "Lun", "04/02". */
+export const fmtSmartTime = (ts: number) => {
+  const today = startOfDay(Date.now());
+  const day = startOfDay(ts);
+  if (day === today) return fmtClock(ts);
+  if (day === today - DAY_MS) return "Ayer";
+  if (today - day < 7 * DAY_MS) return capitalize(new Date(ts).toLocaleDateString("es", { weekday: "short" }));
+  return new Date(ts).toLocaleDateString("es", { day: "2-digit", month: "2-digit" });
+};
+
 export const pickRecorderMimeType = () => {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
   return AUDIO_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
 };
 
+const readFileAsDataURL = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    r.readAsDataURL(file);
+  });
+
 /**
  * Redimensiona una imagen en el navegador antes de guardarla como dataURL.
  * Ahorra ancho de banda y almacenamiento (avatares 256px, banners 1024px).
+ * Los GIF se devuelven intactos: pasarlos por canvas los congela (1 frame).
  */
-export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Promise<string> =>
-  new Promise((resolve, reject) => {
+export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Promise<string> => {
+  if (file.type === "image/gif") return readFileAsDataURL(file);
+  return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
@@ -132,15 +254,20 @@ export const downscaleImage = (file: File, maxDim: number, quality = 0.85): Prom
     };
     img.src = url;
   });
+};
 
 /** Convierte el payload del servidor en un Message del cliente. */
-export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | null) => string | undefined): Message => {
+export const parseServerMessage = (
+  data: import("./socketEvents").ServerMessagePayload & { edited?: boolean },
+  resolveMediaUrl: (u?: string | null) => string | undefined
+): Message => {
   const isSticker = data.kind === "sticker" || data.text === "sticker_file";
   const hasImage = (data.imageUrls && data.imageUrls.length > 0) || data.imageUrl;
   const ts = data.timestamp ? new Date(data.timestamp).getTime() : Date.now();
   return {
     id: data.msgId ?? `${ts}-${Math.random().toString(36).slice(2, 7)}`,
-    authorId: data.userId || data.id,
+    clientId: data.clientId ?? undefined,
+    authorId: data.userId || data.id || "",
     kind: (isSticker ? "sticker" : hasImage ? "image" : data.audioUrl ? "audio" : "text") as MessageKind,
     text: isSticker || data.text === "sticker_file" ? undefined : (data.text || undefined),
     imageUrl: resolveMediaUrl((data.imageUrls && data.imageUrls[0]) || data.imageUrl || undefined),
@@ -150,7 +277,9 @@ export const parseServerMessage = (data: any, resolveMediaUrl: (u?: string | nul
     time: fmtClock(ts),
     timestamp: ts,
     deleted: !!data.deleted,
+    edited: !!data.edited,
     reactions: data.reactions && typeof data.reactions === "object" ? data.reactions : undefined,
+    linkPreview: data.linkPreview || undefined,
     isBot: data.isBot || data.userId === "forwardbot",
   };
 };
