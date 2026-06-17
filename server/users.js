@@ -114,9 +114,9 @@ const BOT_PROFILE = {
     name: 'ForwardBot',
     avatar: '/assets/Forward_Bot.png',
     color: '#8B5CF6',
-    banner: null,
+    banner: '/assets/banner.png',
     bannerColor: '#8B5CF6',
-    bio: 'Asistente de IA de Forward_Chat. Menciona @ForwardBot en el lobby o escrÃ­beme por privado.',
+    bio: 'Asistente de IA de Forward_Chat. Menciona @ForwardBot en el lobby o escríbeme por privado.',
     status: 'online',
     isBot: true
 };
